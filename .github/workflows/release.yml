@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate before packaging
+        run: |
+          set -e
+          node --check background.js
+          node --check content.js
+          node scripts/validate-manifest.mjs
+
+      - name: Package extension (zip)
+        run: |
+          zip -r zang-takhfif-shekan.zip manifest.json background.js content.js
+          unzip -l zang-takhfif-shekan.zip
+
+      - name: Create GitHub Release and attach zip
+        uses: softprops/action-gh-release@v2
+        with:
+          files: zang-takhfif-shekan.zip
+          generate_release_notes: true
