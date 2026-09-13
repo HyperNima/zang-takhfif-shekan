@@ -319,4 +319,3 @@ git clone https://github.com/HyperNima/zang-takhfif-shekan.git
 ---
 
 *built with `performance.now()`, one busy-wait loop, and an unreasonable amount of stubbornness.* :))
-````
