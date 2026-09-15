@@ -108,12 +108,12 @@ Screenshot
 | :--- | :---: | :--- | :--- |
 | **روش همگام‌سازی شروع** | `canvas` | نحوهٔ تشخیص شروع شمارش: خواندن مستقیم bitmap تایمر / پیکسل + اشتراک صفحه / خاموش (تأخیر ثابت). | `canvas` |
 | **آستانهٔ Δ تشخیص حرکت** | `8` | حداقل اختلاف پیکسلیِ فریم‌به‌فریم برای ثبت «تغییر». | تریگر کاذب؟ بالاتر (`10`–`15`). تریگر نمی‌دهد؟ پایین‌تر (`4`–`6`). |
-| **جبران تأخیر تریگر** (ms) | `20` | جبران تأخیرِ «دیدنِ» اولین تغییرات — پیچ دوم کالیبراسیون. | هر `0.01s` خطای ثابت ⇐ `+10ms` |
+| **جبران تأخیر تریگر** (ms) | `40` | جبران تأخیرِ «دیدنِ» اولین تغییرات — پیچ دوم کالیبراسیون. | هر `0.01s` خطای ثابت ⇐ `+10ms` |
 | **تأخیر بعد از کلیک شروع** (ms) | `80` | فقط در حالت «خاموش» فعال است (در حالت همگام بی‌اثر). | — |
-| **زمان توقف / آفست** (ثانیه) | `5.00` | فاصلهٔ تریگر تا کلیک توقف — **پیچ اصلی کالیبراسیون**. | طبق جدول کالیبراسیون زیر. |
-| **فاصلهٔ انسانی press→release** (ms) | `90` | هر کلیک چند میلی‌ثانیه نگه‌داشته شود تا شبیه رفتار انسان باشد. | بین `50` تا `90` |
+| **زمان توقف / آفست** (ثانیه) | `5.04` | فاصلهٔ تریگر تا کلیک توقف — **پیچ اصلی کالیبراسیون**. | طبق جدول کالیبراسیون زیر. |
+| **فاصلهٔ انسانی press→release** (ms) | `50` | هر کلیک چند میلی‌ثانیه نگه‌داشته شود تا شبیه رفتار انسان باشد. | بین `50` تا `90` |
 | **توقف ثبت شود روی** | `فشردن` | مبنای زمانی کلیک توقف: فشردن (`pointerdown`) یا رهاکردن (`click`). | `فشردن` |
-| **پیش‌ارسال CDP** (ms) | `0` | ارسالِ زودترِ دستورات برای خنثی‌کردن تأخیر تزریق پروتکل. | عددی که لاگِ «رسیدن press» نشان می‌دهد. |
+| **پیش‌ارسال CDP** (ms) | `40` | ارسالِ زودترِ دستورات برای خنثی‌کردن تأخیر تزریق پروتکل. | عددی که لاگِ «رسیدن press» نشان می‌دهد. |
 | ☑️ **آماده‌سازی خودکار** | `خاموش` | پس از پایان اجرا، بدون ریست دستی مجدداً منتظر کلید می‌ماند. | برای زدنِ پشت‌سرهمِ شانس‌های روزانه. |
 
 #### 🕹 کنترل‌های اجرا
@@ -144,7 +144,7 @@ Screenshot
 
 ---
 
-### 🎯 راهنمای استفاده و کالیبراسیون
+### 🎯 راهنمای استفاده
 
 * **فعال کردن افزوله قبل استارت بازی:** ابتدا کلید `T` وقتی موس در فضای خالی است زده شود تا `CDP` فعال شود، همیشه ثانیه شمار بازی روی 00:00 باشد قبل از انکه موس را روی شروع بازی برده و کلید `K` را بزنید.
 * **نوار دیباگ کروم:** پیام بالای مرورگر مبنی بر `"Extension started debugging this browser"` طبیعی است. آن را Cancel نکنید؛ پس از اتمام عملیات خودکار بسته می‌شود.
@@ -275,12 +275,12 @@ With clicks solved, a subtler enemy remained: the **random startup pause**. Any 
 | :--- | :---: | :--- | :--- |
 | **Sync Method** | `canvas` | How the counting start is detected: direct timer bitmap / pixel + screen share / off (fixed delay). | `canvas` |
 | **Δ Threshold** | `8` | Minimum frame-to-frame pixel difference to count as a "change". | False triggers? Raise (`10`–`15`). No trigger? Lower (`4`–`6`). |
-| **Trigger Compensation** (ms) | `20` | Absorbs the "seeing" latency of the first changes — the secondary calibration knob. | Every `0.01s` of constant error ⇐ `+10ms` |
+| **Trigger Compensation** (ms) | `40` | Absorbs the "seeing" latency of the first changes — the secondary calibration knob. | Every `0.01s` of constant error ⇐ `+10ms` |
 | **Start Delay** (ms) | `80` | Only active in "off" mode (ignored in sync modes). | — |
-| **Stop Time / Offset** (s) | `5.00` | Time from trigger to the stop click — **Primary Calibration Control**. | Follow the calibration table. |
-| **Human Gap** (ms) | `90` | Press-to-release holding duration to simulate a physical click. | `50`–`90` ms |
+| **Stop Time / Offset** (s) | `5.04` | Time from trigger to the stop click — **Primary Calibration Control**. | Follow the calibration table. |
+| **Human Gap** (ms) | `50` | Press-to-release holding duration to simulate a physical click. | `50`–`90` ms |
 | **Stop Registers On** | `Press` | Timing anchor for the stop click: `Press` or `Release`. | `Press` |
-| **CDP Lead** (ms) | `0` | Sends events early to cancel CDP transport latency. | Match the "press arrival" log value. |
+| **CDP Lead** (ms) | `40` | Sends events early to cancel CDP transport latency. | Match the "press arrival" log value. |
 | ☑️ **Auto-Rearm** | `Off` | Automatically re-arms after each run without manual reset. | Enable for consecutive daily attempts. |
 
 ### Runtime Controls
@@ -314,7 +314,7 @@ With clicks solved, a subtler enemy remained: the **random startup pause**. Any 
 
 ---
 
-## 🎯 Usage & Calibration Protocol
+## 🎯 Usage
 
 * **Enable the extension before starting the game:** First, press the `T` key while your mouse is over a blank area to activate `CDP`. Ensure the game timer reads 00:00 before moving your mouse over the start button and pressing the `K` key.
 * **Chrome Debug Banner:** The message at the top of the browser stating `"Extension started debugging this browser"` is normal. Do not click Cancel; it will close automatically after the automated operation finishes.
