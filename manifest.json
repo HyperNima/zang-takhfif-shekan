@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Five Second Rush — CDP Clicker (Pixel Sync)",
-  "description": "کلیک trusted از CDP + همگام‌سازی شروع با اولین حرکت پیکسلی تایمر بازی — کلید K اجرا، T تست",
-  "version": "3.0.0",
+  "name": "DK Five Second Rush — CDP Clicker (Burst Sync)",
+  "description": "کلیک trusted از CDP + همگام‌سازی با الگوی نرخِ تغییرات canvas تایمر (مصون از انیمیشن idle) — کلید K اجرا، T تست",
+  "version": "3.2.0",
   "permissions": ["debugger"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [

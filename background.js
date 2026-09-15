@@ -1,20 +1,19 @@
-/* background.js — نسخهٔ ۳.۰
+/* background.js — نسخهٔ ۳.۱
    ✓ کلیک کاملاً trusted از CDP
-   ✓ اتصال پایدار دیباگر: بنر فقط یک‌بار ظاهر می‌شود (نه در هر اجرا)
-   ✓ حالت همگام: زمان توقف با پیام arm-stop از content می‌رسد
-*/
+   ✓ اتصال پایدار دیباگر (بنر فقط یک‌بار)
+   ✓ حالت همگام: زمان توقف با پیام arm-stop از content می‌رسد */
 
-const attached = new Set(); // تب‌هایی که دیباگر وصل است
+const attached = new Set();
 const runs = new Map();     // tabId -> { timers, stopX, stopY, gapMs, armed }
-const LEAD = 8;             // حداکثر busy-wait برای دقت میلی‌ثانیه‌ای
+const LEAD = 8;
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   const tabId = sender && sender.tab && sender.tab.id;
   if (tabId == null || !msg || !msg.type) return;
-  if (msg.type === 'dk5sr-run')         doRun(tabId, msg);
-  else if (msg.type === 'dk5sr-test')     doTest(tabId, msg);
-  else if (msg.type === 'dk5sr-cancel')   cancelRun(tabId, true);
-  else if (msg.type === 'dk5sr-attach')   doAttach(tabId);
+  if (msg.type === 'dk5sr-run')       doRun(tabId, msg);
+  else if (msg.type === 'dk5sr-test')    doTest(tabId, msg);
+  else if (msg.type === 'dk5sr-cancel')  cancelRun(tabId, true);
+  else if (msg.type === 'dk5sr-attach')  doAttach(tabId);
   else if (msg.type === 'dk5sr-coords') {
     const st = runs.get(tabId);
     if (st && Number.isFinite(+msg.x) && Number.isFinite(+msg.y)) { st.stopX = +msg.x; st.stopY = +msg.y; }
@@ -22,7 +21,6 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   else if (msg.type === 'dk5sr-arm-stop') armStop(tabId, msg);
 });
 
-/* جدا شدن دیباگر (Cancel بنر یا باز شدن DevTools) */
 chrome.debugger.onDetach.addListener((source) => {
   if (source && source.tabId != null) {
     attached.delete(source.tabId);
@@ -30,23 +28,19 @@ chrome.debugger.onDetach.addListener((source) => {
   }
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  attached.delete(tabId);
-  runs.delete(tabId);
-});
+chrome.tabs.onRemoved.addListener((tabId) => { attached.delete(tabId); runs.delete(tabId); });
 
 function logTo(tabId, text) {
   try { chrome.tabs.sendMessage(tabId, { type: 'dk5sr-log', text }).catch(() => {}); } catch (e) {}
 }
 
-/* اتصال پایدار — اگر بعد از خواب Service Worker قبلاً وصل بوده باشیم، خطا را می‌بلعیم */
 async function attach(tabId) {
   if (attached.has(tabId)) return;
   try {
     await chrome.debugger.attach({ tabId }, '1.3');
   } catch (e) {
     const m = String((e && e.message) || e);
-    if (!/already attached/i.test(m)) throw e; /* وگرنه: خودمان وصل بوده‌ایم */
+    if (!/already attached/i.test(m)) throw e;
   }
   attached.add(tabId);
 }
@@ -54,13 +48,12 @@ async function attach(tabId) {
 async function doAttach(tabId) {
   try {
     await attach(tabId);
-    logTo(tabId, '🔗 دیباگر وصل شد و پایدار می‌ماند — بنر زرد فقط همین یک‌بار می‌آید ✔');
+    logTo(tabId, '🔗 دیباگر وصل شد و پایدار می‌ماند ✔');
   } catch (e) {
-    logTo(tabId, '⚠ اتصال دیباگر ناموفق: ' + ((e && e.message) || e) + ' — DevTools همین تب نباید باز باشد.');
+    logTo(tabId, '⚠ اتصال دیباگر ناموفق: ' + ((e && e.message) || e));
   }
 }
 
-/* ---------- رویدادهای موس واقعی ---------- */
 function press(tabId, x, y) {
   return chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
     type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'mouse',
@@ -72,7 +65,6 @@ function release(tabId, x, y) {
   });
 }
 
-/* زمان‌بندی دقیق: setTimeout + چند میلی‌ثانیه busy-wait */
 function schedulePrecise(st, target, fn) {
   const wait = target - performance.now();
   const id = setTimeout(() => {
@@ -84,7 +76,6 @@ function schedulePrecise(st, target, fn) {
 
 function fmtMs(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + 'ms'; }
 
-/* ---------- اجرای کامل: شروع → (همگام: انتظار arm-stop | باز: زمان‌بندی داخلی) ---------- */
 async function doRun(tabId, msg) {
   cancelRun(tabId, false);
   const gap = Math.max(0, +msg.gapMs || 0);
@@ -102,18 +93,16 @@ async function doRun(tabId, msg) {
     await attach(tabId);
   } catch (e) {
     runs.delete(tabId);
-    logTo(tabId, '⚠ اتصال دیباگر ناموفق: ' + ((e && e.message) || e) + ' — DevTools همین تب نباید باز باشد.');
+    logTo(tabId, '⚠ اتصال دیباگر ناموفق: ' + ((e && e.message) || e));
     return;
   }
 
   const t0 = performance.now();
   const t0Date = Date.now();
 
-  /* ۱) کلیک شروع */
   press(tabId, x, y).catch((e) => logTo(tabId, '⚠ خطای dispatch شروع: ' + ((e && e.message) || e)));
   schedulePrecise(st, t0 + gap, () => release(tabId, x, y).catch(() => {}));
 
-  /* ۲) اطلاع‌رسانی زمان‌بندی به پنل */
   const tTarget = t0 + delayMs + stopMs;
   const tTargetDate = t0Date + (tTarget - t0);
   try {
@@ -121,7 +110,7 @@ async function doRun(tabId, msg) {
   } catch (e) {}
 
   if (sync) {
-    /* ⚡ حالت همگام: زمان توقف بعداً با arm-stop می‌رسد (وقتی content حرکت تایمر را دید) */
+    /* ⚡ زمان توقف بعداً با arm-stop می‌رسد */
     const janitor = setTimeout(() => {
       if (runs.get(tabId) === st && !st.armed) {
         runs.delete(tabId);
@@ -133,7 +122,7 @@ async function doRun(tabId, msg) {
     return;
   }
 
-  /* ۳) حالت باز: زمان‌بندی داخلی (مثل نسخهٔ ۲) */
+  /* حالت باز (تأخیر ثابت) */
   let tPress = (anchor === 'release') ? (tTarget - gap) : tTarget;
   tPress -= lead;
   schedulePrecise(st, tPress, () => {
@@ -148,7 +137,6 @@ async function doRun(tabId, msg) {
   });
 }
 
-/* ⚡ زمان توقفِ همگام‌شده رسید (از content، بعد از دیدن اولین حرکت تایمر) */
 function armStop(tabId, msg) {
   const st = runs.get(tabId);
   if (!st) { logTo(tabId, '⚠ arm-stop رسید ولی اجرایی در جریان نیست.'); return; }
@@ -171,15 +159,9 @@ function armStop(tabId, msg) {
   });
 }
 
-/* ---------- کلیک تستی ---------- */
 async function doTest(tabId, msg) {
   if (runs.has(tabId)) { logTo(tabId, '⏳ اجرا در جریان است؛ تست نادیده گرفته شد.'); return; }
-  try {
-    await attach(tabId);
-  } catch (e) {
-    logTo(tabId, '⚠ اتصال دیباگر ناموفق: ' + ((e && e.message) || e));
-    return;
-  }
+  try { await attach(tabId); } catch (e) { logTo(tabId, '⚠ اتصال دیباگر ناموفق: ' + ((e && e.message) || e)); return; }
   const { x, y } = msg;
   const gap = Math.max(0, +msg.gapMs || 90);
   logTo(tabId, '🧪 کلیک تستی (کاملاً trusted) زده شد…');

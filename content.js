@@ -1,73 +1,217 @@
-/* content.js — نسخهٔ ۳.۰
-   ⚡ حالت B (پیکسلی): تصویر زندهٔ همین تب → crop چسبیده به canvas تایمر (…__digits 424×83)
-      → اولین تغییر پیکسل = شمارش بازی شروع شده → شمارش داخلی از همین لحظه.
-   🔗 اتصال پایدار دیباگر + بنر CDP فقط یک‌بار (هنگام فعال‌سازی دیده‌بان).
-   🎯 مختصات دکمهٔ توقف زنده ردیابی می‌شود (مصون از اسکرول).
-   + حالت DOM (اگر روزی متن شمارنده وجود داشت) و حالت باز (تأخیر ثابت) به‌عنوان پشتیبان.
-*/
+/* content.js — نسخهٔ ۳.۲
+   ⚡ موتور جدید «burst»: مقایسهٔ فریم‌به‌فریم + نرخ تغییر (۵ تغییر پیاپی در ۴۵۰ms)
+      → انیمیشن idle/درخشش/چشمک تایمر دیگر تریگر نمی‌زند؛ فقط تیکِ واقعی صدم‌ثانیه‌ها.
+   👁 ناحیهٔ تحت نظر: ۳۸٪ آخر canvas (رقم صدم‌ثانیه — چشمک دونقطه بیرون ناحیه).
+   🧪 دکمهٔ «تست تماشا بدون کلیک» + نمایشگر Δ برای دیدن نویز/سیگنال.
+   ⛔ شکست تشخیص = بدون کلیک اضطراری (پیش‌فرض) — بدون اتلاف شانس. */
 
 (() => {
   'use strict';
   if (window.self !== window.top) return;
 
-  const LS_KEY  = 'dk_5sr_cdp_settings_v2';
+  const LS_KEY  = 'dk_5sr_cdp_settings_v4';
   const ROOT_ID = 'dk5sr-root';
   const GAME_RE = /five-second-rush/i;
 
-  const QUIET_MS  = 2000;   /* بعد از تزریق کلیک شروع، این‌قدر صبر کن (ریست 00:00 و اسکرول آرام بگیرد) */
-  const PX_THRESH = 80.0;  /* آستانهٔ میانگین اختلاف پیکسل (0-255) برای «حرکت» */
-  const EST_PAUSE = 160;  /* حدسِ مکث تصادفی بازی برای توقف اضطراری */
-  const PX_W = 64, PX_H = 12; /* ابعاد crop کوچک‌شده برای مقایسه */
+  const BURST_MIN = 5;     /* حداقل تعداد تغییر فریم‌به‌فریم برای تأیید شمارش */
+  const BURST_WIN = 450;   /* پنجرهٔ زمانی تأیید (ms) */
+  const BURST_GAP = 500;   /* بیشینهٔ فاصلهٔ مجاز بین دو تغییر متوالی (ms) */
+  const EST_PAUSE = 160;   /* حدس مکث — فقط برای حالت «کلیک اضطراری» (خاموش پیش‌فرض) */
+  const PX_W = 64, PX_H = 14;
+  const ZONE_X = 0.62;     /* ناحیهٔ تحت نظر: از ۶۲٪ عرض canvas تا آخر */
 
   const S = {
     active: false, bootstrapped: false,
-    phase: 'armed',                 /* armed | running | done */
+    phase: 'armed',
     hotkey: 'KeyK',
-    syncMethod: 'pixel',            /* pixel | dom | off */
-    syncComp: 20,                   /* جبران تأخیر تریگر (ms) */
+    method: 'canvas',            /* canvas | pixel | off */
+    thresh: 8,                   /* آستانهٔ Δ فریم‌به‌فریم */
+    syncComp: 20,
     delayMs: 80, stopSec: 5.00, gapMs: 90,
-    anchor: 'press', leadMs: 0, autoRearm: false,
+    anchor: 'press', leadMs: 0, autoRearm: false, failClick: false,
     mouseX: null, mouseY: null,
     origX: 0, origY: 0, runX: 0, runY: 0,
-    runDelayMs: 80, runStopSec: 5.00, syncRunning: false,
+    runDelayMs: 80, runStopSec: 5.00, syncRunning: false, testing: false,
     btnEl: null, lastCoordsPush: 0, coordLogged: false,
     timing: null, arrivedStart: false, arrivedStop: false,
     stopArrivalEpoch: null, stopArrivalDate: null,
-    gameStartEpoch: null, stopAtEpoch: null, domWatch: null,
-    counterEl: null, lastScan: 0, lastPageTxt: null,
-    rafId: 0,
+    gameStartEpoch: null, stopAtEpoch: null,
+    rafId: 0, lastHealth: 0,
     ui: {},
   };
-  let counterSnap = new Map();
 
-  /* ================= دیده‌بان پیکسلی (Mode B) ================= */
-  const PX = {
-    stream: null, video: null, canvas: null, ctx: null, el: null,
-    base: null, phase: 'idle', loop: false, tInject: 0,
-    onMotion: null, onFail: null, guard: 0,
-  };
-
-  function pxActive() { return !!(PX.stream && PX.stream.active && PX.video); }
-
-  /* canvas تایمر بازی: کلاس __digits یا ابعاد 424×83 */
-  function findDigitsCanvas() {
-    let best = null;
+  /* ================= یافتن canvas تایمر ================= */
+  function deepCanvases(root, depth, out) {
+    if (!root || depth > 8) return out;
     try {
-      const list = document.querySelectorAll('canvas');
-      for (const el of list) {
-        if (!el.getClientRects().length) continue;
-        if (el.closest && el.closest('#' + ROOT_ID)) continue;
-        const cls = typeof el.className === 'string' ? el.className : '';
-        const r = el.getBoundingClientRect();
-        let score = 0;
-        if (cls.indexOf('__digits') !== -1) score += 100;
-        if (+el.getAttribute('width') === 424 && +el.getAttribute('height') === 83) score += 50;
-        score += Math.min(20, r.width / 24);
-        if (!best || score > best.score) best = { el, score };
+      const cs = root.querySelectorAll('canvas');
+      for (let i = 0; i < cs.length; i++) out.push(cs[i]);
+      const all = root.querySelectorAll('*');
+      for (let i = 0; i < all.length; i++) {
+        if (all[i].shadowRoot) deepCanvases(all[i].shadowRoot, depth + 1, out);
       }
     } catch (e) {}
-    return best && best.score >= 50 ? best.el : null;
+    return out;
   }
+
+  function findTimerCanvas() {
+    let best = null;
+    const list = deepCanvases(document, 0, []);
+    for (const el of list) {
+      if (!el.isConnected) continue;
+      if (el.closest && el.closest('#' + ROOT_ID)) continue;
+      const cls = typeof el.className === 'string' ? el.className : '';
+      const w = +el.getAttribute('width') || 0, h = +el.getAttribute('height') || 0;
+      let score = 0;
+      if (cls.indexOf('__digits') !== -1) score += 100;
+      if (w === 424 && h === 83) score += 60;
+      if (cls.indexOf('digits') !== -1) score += 20;
+      const r = el.getBoundingClientRect();
+      if (r.width > 30 && r.height > 10) score += 10;
+      if (!best || score > best.score) best = { el, score };
+    }
+    return best && best.score >= 60 ? best.el : null;
+  }
+
+  function canvasDesc(el) {
+    if (!el) return '—';
+    const cls = String(el.className || '');
+    const m = cls.match(/__[A-Za-z0-9_-]*__digits/);
+    return (m ? '…' + m[0] : (cls.slice(-28) || '(بدون کلاس)')) +
+      ' (' + (el.getAttribute('width') || '?') + '×' + (el.getAttribute('height') || '?') + ')';
+  }
+
+  /* ================= خواندن مستقیم bitmap (روش canvas) — فقط ناحیهٔ رقم صدم‌ثانیه ================= */
+  const CV = { el: null, scratch: null, sctx: null, tainted: false, lastFind: 0 };
+
+  function cvGrab() {
+    if (CV.tainted) return null;
+    if (!CV.el || !CV.el.isConnected) {
+      if (Date.now() - CV.lastFind < 60) return null;
+      CV.lastFind = Date.now();
+      CV.el = findTimerCanvas();
+      if (!CV.el) return null;
+    }
+    try {
+      if (!CV.sctx) {
+        CV.scratch = document.createElement('canvas');
+        CV.scratch.width = PX_W; CV.scratch.height = PX_H;
+        CV.sctx = CV.scratch.getContext('2d', { willReadFrequently: true });
+      }
+      const w = CV.el.width || 424, h = CV.el.height || 83;
+      const sx = Math.floor(w * ZONE_X), sw = Math.max(4, Math.ceil(w * (1 - ZONE_X)));
+      CV.sctx.clearRect(0, 0, PX_W, PX_H);
+      CV.sctx.drawImage(CV.el, sx, 0, sw, h, 0, 0, PX_W, PX_H);
+      return CV.sctx.getImageData(0, 0, PX_W, PX_H).data;
+    } catch (e) { CV.tainted = true; return null; }
+  }
+
+  function cvProbe() {
+    if (CV.tainted) return false;
+    if (!findTimerCanvas()) return false;
+    return !CV.tainted && !!cvGrab();
+  }
+
+  /* ================= موتور تماشا «burst» (فریم‌به‌فریم + نرخ تغییر) ================= */
+  const WATCH = {
+    active: false, grab: null, lastFrame: null, quietUntil: 0,
+    events: [], burstStart: 0,
+    dLast: 0, dPeak: 0, evtTotal: 0,
+    onMotion: null, onFail: null,
+    iv: 0, raf: 0, guard: 0, uiT: 0,
+  };
+
+  function diffMean(a, b) {
+    let sum = 0, n = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      sum += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+      n += 3;
+    }
+    return sum / n;
+  }
+
+  function watchStart(grab, onMotion, onFail, timeoutMs) {
+    watchStop();
+    WATCH.active = true; WATCH.grab = grab;
+    WATCH.onMotion = onMotion; WATCH.onFail = onFail;
+    WATCH.lastFrame = null; WATCH.events = []; WATCH.burstStart = 0;
+    WATCH.dLast = 0; WATCH.dPeak = 0; WATCH.evtTotal = 0;
+    WATCH.quietUntil = Date.now() + 150;      /* ری‌پینت لحظهٔ کلیک شروع را نادیده بگیر */
+    WATCH.iv = setInterval(watchTick, 5);
+    const loop = () => { if (!WATCH.active) return; watchTick(); WATCH.raf = requestAnimationFrame(loop); };
+    WATCH.raf = requestAnimationFrame(loop);
+    WATCH.guard = setTimeout(() => {
+      if (!WATCH.active) return;
+      const f = WATCH.onFail;
+      watchStop();
+      if (f) f('تا ' + Math.round((timeoutMs || 4200) / 1000) + ' ثانیه الگوی شمارش (تغییرات پیاپی) دیده نشد');
+    }, timeoutMs || 4200);
+  }
+
+  function watchTick() {
+    if (!WATCH.active) return;
+    const now = Date.now();
+    let f = null;
+    try { f = WATCH.grab(); } catch (e) { f = null; }
+    if (!f) { WATCH.lastFrame = null; return; }
+
+    if (WATCH.lastFrame && WATCH.lastFrame.length === f.length) {
+      const d = diffMean(f, WATCH.lastFrame);
+      WATCH.dLast = d;
+      if (d > WATCH.dPeak) WATCH.dPeak = d;
+
+      if (now >= WATCH.quietUntil) {
+        if (d > S.thresh) {
+          const lastT = WATCH.events.length ? WATCH.events[WATCH.events.length - 1] : 0;
+          if (!WATCH.burstStart || now - lastT > BURST_GAP) WATCH.burstStart = now;
+          WATCH.events.push(now);
+          WATCH.evtTotal++;
+        }
+        while (WATCH.events.length && now - WATCH.events[0] > BURST_WIN) WATCH.events.shift();
+
+        /* ★ تأیید: تعداد کافی تغییرِ پیاپی در پنجره = شمارش واقعی */
+        if (WATCH.events.length >= BURST_MIN) {
+          const t = WATCH.burstStart;
+          const st = { peak: WATCH.dPeak, total: WATCH.evtTotal };
+          const cb = WATCH.onMotion;
+          WATCH.onMotion = null; WATCH.onFail = null;
+          watchStop();
+          if (cb) cb(t, st);
+          return;
+        }
+      }
+    }
+    WATCH.lastFrame = f;
+    if (now - WATCH.uiT > 200) { WATCH.uiT = now; updateDeltaUI(); }
+  }
+
+  function watchStop() {
+    WATCH.active = false;
+    clearInterval(WATCH.iv); cancelAnimationFrame(WATCH.raf); clearTimeout(WATCH.guard);
+    hideOutline();
+    updateDeltaUI();
+  }
+
+  function updateDeltaUI() {
+    if (!S.ui.delta) return;
+    if (WATCH.active) {
+      S.ui.delta.textContent = 'Δ=' + WATCH.dLast.toFixed(1) + ' (آستانه ' + S.thresh + ') ⚡' + WATCH.evtTotal;
+      S.ui.delta.style.color = WATCH.events.length ? '#f1c40f' : '#7d8798';
+    } else if (WATCH.evtTotal > 0) {
+      S.ui.delta.textContent = 'Δ آخرین: ' + WATCH.dLast.toFixed(1) + ' | اوج: ' +
+        WATCH.dPeak.toFixed(1) + ' | ⚡' + WATCH.evtTotal;
+      S.ui.delta.style.color = '#7d8798';
+    } else {
+      S.ui.delta.textContent = 'Δ: —';
+    }
+  }
+
+  /* ================= روش pixel (پشتیبان): اشتراک صفحه + کالیبراسیون ================= */
+  const PX = { stream: null, video: null, canvas: null, ctx: null, el: null, lastFind: 0 };
+  const MAP = { ok: false, sx: 1, sy: 1, dx: 0, dy: 0 };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function pxActive() { return !!(PX.stream && PX.stream.active && PX.video); }
 
   async function ensureStream() {
     if (pxActive()) return true;
@@ -75,27 +219,22 @@
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: 'browser', frameRate: { ideal: 60, max: 60 } },
         audio: false,
-        preferCurrentTab: true,      /* همین تب از قبل انتخاب شده است */
-        selfBrowserSurface: 'include',
-        surfaceSwitching: 'exclude',
-        monitorTypeSurfaces: 'exclude',
-        systemAudio: 'exclude',
+        preferCurrentTab: true, selfBrowserSurface: 'include',
+        surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude', systemAudio: 'exclude',
       });
       PX.stream = stream;
       const track = stream.getVideoTracks()[0];
       if (track) track.addEventListener('ended', () => {
-        PX.stream = null; PX.video = null; PX.canvas = null; PX.ctx = null; PX.base = null;
+        PX.stream = null; PX.video = null; PX.canvas = null; PX.ctx = null; MAP.ok = false;
         updateWatcherUI();
-        pushLog('⚠ اشتراک صفحه قطع شد — دیده‌بان غیرفعال. (دکمهٔ 🎥 یا K بعدی)');
+        pushLog('⚠ اشتراک صفحه قطع شد.');
       });
       const video = document.createElement('video');
-      video.muted = true;
-      video.playsInline = true;
-      video.setAttribute('aria-hidden', 'true');
+      video.muted = true; video.playsInline = true;
       video.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1;';
       (document.body || document.documentElement).appendChild(video);
       video.srcObject = stream;
-      try { await video.play(); } catch (e) { /* پخش زنده معمولاً بدون ژست مجاز است */ }
+      try { await video.play(); } catch (e) {}
       PX.video = video;
       PX.canvas = document.createElement('canvas');
       PX.canvas.width = PX_W; PX.canvas.height = PX_H;
@@ -108,115 +247,125 @@
     }
   }
 
-  /* crop چسبیده به عنصر — در هر فریم rect تازه خوانده می‌شود (مصون از اسکرول) */
-  function grabCrop() {
-    let el = PX.el;
-    if (!el || !el.isConnected) { el = findDigitsCanvas(); PX.el = el; }
-    if (!el || !PX.video || !PX.video.videoWidth) return null;
-    const r = el.getBoundingClientRect();
+  async function calibrateMapping() {
+    if (MAP.ok || !pxActive()) return MAP.ok;
+    try {
+      const w = PX.video.videoWidth, h = PX.video.videoHeight;
+      if (!w || !h) return false;
+      const t = document.createElement('canvas');
+      t.width = w; t.height = h;
+      const tc = t.getContext('2d', { willReadFrequently: true });
+
+      const find = async (x, y) => {
+        const d = document.createElement('div');
+        d.style.cssText = 'position:fixed;left:' + x + 'px;top:' + y + 'px;width:24px;height:24px;' +
+          'background:#ff00ff;z-index:2147483647;pointer-events:none;';
+        document.body.appendChild(d);
+        await sleep(240);
+        tc.drawImage(PX.video, 0, 0);
+        const img = tc.getImageData(0, 0, w, h).data;
+        d.remove();
+        let sx = 0, sy = 0, n = 0;
+        for (let py = 0; py < h; py += 2) {
+          for (let px = 0; px < w; px += 2) {
+            const i = (py * w + px) * 4;
+            if (img[i] > 200 && img[i + 1] < 70 && img[i + 2] > 200) { sx += px; sy += py; n++; }
+          }
+        }
+        return n ? [sx / n, sy / n] : null;
+      };
+
+      const x1 = 80, y1 = 80;
+      const x2 = Math.max(200, innerWidth - 104), y2 = Math.max(200, innerHeight - 104);
+      const p1 = await find(x1, y1);
+      const p2 = await find(x2, y2);
+      if (!p1 || !p2) { pushLog('⚠ کالیبراسیون نگاشت ناموفق — نگاشت ساده استفاده می‌شود.'); return false; }
+      MAP.sx = (p2[0] - p1[0]) / (x2 - x1);
+      MAP.sy = (p2[1] - p1[1]) / (y2 - y1);
+      MAP.dx = p1[0] - (x1 + 12) * MAP.sx;
+      MAP.dy = p1[1] - (y1 + 12) * MAP.sy;
+      MAP.ok = true;
+      pushLog('📐 کالیبراسیون: scale=' + MAP.sx.toFixed(3) + '×' + MAP.sy.toFixed(3) +
+              ' offset=' + Math.round(MAP.dx) + ',' + Math.round(MAP.dy));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function pxGrab() {
+    if (!pxActive()) return null;
+    if (!PX.el || !PX.el.isConnected) {
+      if (Date.now() - PX.lastFind < 60) return null;
+      PX.lastFind = Date.now();
+      PX.el = findTimerCanvas();
+      if (!PX.el) return null;
+    }
+    const r = PX.el.getBoundingClientRect();
     if (r.width < 10 || r.height < 10) return null;
-    const sx = PX.video.videoWidth / innerWidth;
-    const sy = PX.video.videoHeight / innerHeight;
-    const x = Math.max(0, Math.floor(r.left * sx));
-    const y = Math.max(0, Math.floor(r.top * sy));
-    const w = Math.min(PX.video.videoWidth - x, Math.ceil(r.width * sx));
-    const h = Math.min(PX.video.videoHeight - y, Math.ceil(r.height * sy));
-    if (w < 4 || h < 4) return null;
+    /* فقط ناحیهٔ رقم صدم‌ثانیه (۳۸٪ آخر) */
+    const zx = r.left + r.width * ZONE_X, zw = r.width * (1 - ZONE_X);
+    const x = Math.floor(zx * MAP.sx + MAP.dx);
+    const y = Math.floor(r.top * MAP.sy + MAP.dy);
+    const w = Math.min(PX.video.videoWidth - x, Math.ceil(zw * MAP.sx));
+    const h = Math.min(PX.video.videoHeight - y, Math.ceil(r.height * MAP.sy));
+    if (w < 4 || h < 4 || x < 0 || y < 0) return null;
     PX.ctx.drawImage(PX.video, x, y, w, h, 0, 0, PX_W, PX_H);
     return PX.ctx.getImageData(0, 0, PX_W, PX_H).data;
   }
 
-  function diffMean(a, b) {
-    let sum = 0, n = 0;
-    for (let i = 0; i < a.length; i += 4) {
-      sum += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
-      n += 3;
-    }
-    return sum / n;
+  /* کادر خط‌چین دور canvas (فقط روش pixel — اطمینان چشمی) */
+  let outlineEl = null;
+  function showOutline(el) {
+    hideOutline();
+    if (!el) return;
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483645;border:2px dashed #f1c40f;border-radius:4px;';
+    document.body.appendChild(d);
+    outlineEl = d;
+    const pos = () => {
+      if (!outlineEl || !el.isConnected) return;
+      const r = el.getBoundingClientRect();
+      outlineEl.style.left = (r.left - 5) + 'px';
+      outlineEl.style.top = (r.top - 5) + 'px';
+      outlineEl.style.width = (r.width + 10) + 'px';
+      outlineEl.style.height = (r.height + 10) + 'px';
+    };
+    pos();
+    outlineEl._iv = setInterval(pos, 100);
   }
-
-  function pxTick() {
-    if (!PX.loop) return;
-    const now = Date.now();
-    const crop = grabCrop();
-    if (crop) {
-      if (PX.phase === 'quiet') {
-        if (now >= PX.tInject + QUIET_MS) { PX.base = crop; PX.phase = 'watch'; }
-      } else if (PX.phase === 'watch' && PX.base) {
-        if (diffMean(crop, PX.base) > PX_THRESH) {
-          PX.phase = 'triggered';
-          stopPxLoop();
-          const cb = PX.onMotion; PX.onMotion = null; PX.onFail = null;
-          if (cb) cb(now);
-          return;
-        }
-      }
-    }
-    const v = PX.video;
-    if (v && v.requestVideoFrameCallback) v.requestVideoFrameCallback(pxTick);
-    else requestAnimationFrame(pxTick);
-  }
-
-  function startPxLoop(tInject, onMotion, onFail) {
-    if (!pxActive()) { onFail('دیده‌بان پیکسلی فعال نیست'); return; }
-    PX.tInject = tInject; PX.phase = 'quiet'; PX.base = null; PX.el = null;
-    PX.onMotion = onMotion; PX.onFail = onFail;
-    PX.loop = true;
-    pxTick();
-    clearTimeout(PX.guard);
-    PX.guard = setTimeout(() => {
-      if (PX.phase === 'quiet' || PX.phase === 'watch') {
-        const cb = PX.onFail; PX.onFail = null; PX.onMotion = null;
-        stopPxLoop();
-        if (cb) cb('تا ۴ ثانیه حرکتی در تایمر دیده نشد');
-      }
-    }, 4000);
-  }
-
-  function stopPxLoop() {
-    PX.loop = false; PX.phase = 'idle';
-    clearTimeout(PX.guard);
-  }
-
-  function warnPanelOverlap() {
-    const c = findDigitsCanvas(), p = S.ui.root;
-    if (!c || !p) return;
-    const a = c.getBoundingClientRect(), b = p.getBoundingClientRect();
-    const ix = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-    const iy = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-    if (ix > 4 && iy > 4) pushLog('⚠ پنل روی ناحیهٔ تایمر افتاده — آن را جابه‌جا کن وگرنه تشخیص پیکسلی کار نمی‌کند!');
+  function hideOutline() {
+    if (outlineEl) { clearInterval(outlineEl._iv); outlineEl.remove(); outlineEl = null; }
   }
 
   async function toggleWatcher() {
-    if (S.phase === 'running') { pushLog('⏳ حین اجرا نمی‌شود — اول ریست.'); return; }
+    if (S.phase === 'running' || S.testing) { pushLog('⏳ حین اجرا/تست نمی‌شود — اول ریست.'); return; }
     if (pxActive()) {
       try { PX.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
       if (PX.video) { try { PX.video.remove(); } catch (e) {} }
-      PX.stream = null; PX.video = null; PX.canvas = null; PX.ctx = null; PX.base = null;
+      PX.stream = null; PX.video = null; PX.canvas = null; PX.ctx = null; MAP.ok = false;
       updateWatcherUI();
-      pushLog('🎥 دیده‌بان خاموش شد.');
+      pushLog('🎥 دیده‌بان پیکسلی خاموش شد.');
       return;
     }
     if (S.ui.watchbtn) S.ui.watchbtn.disabled = true;
     const ok = await ensureStream();
-    if (S.ui.watchbtn) S.ui.watchbtn.disabled = false;
     if (ok) {
-      send({ type: 'dk5sr-attach' }); /* بنر همین حالا بیاید، نه وسط اجرا */
-      pushLog('🎥 دیده‌بان فعال ✔ — اشتراک صفحه برقرار و دیباگر وصل شد (بنر زرد فقط همین یک‌بار می‌آید).');
+      send({ type: 'dk5sr-attach' });
+      await calibrateMapping();
+      pushLog('🎥 دیده‌بان پیکسلی فعال ✔');
     }
+    if (S.ui.watchbtn) S.ui.watchbtn.disabled = false;
     updateWatcherUI();
   }
 
   function updateWatcherUI() {
     if (!S.ui.watchstat) return;
-    const on = pxActive();
-    if (S.ui.watchbtn) S.ui.watchbtn.textContent = on ? '⏹ خاموش‌کردن دیده‌بان' : '🎥 فعال‌سازی دیده‌بان صفحه';
-    S.ui.watchstat.textContent = on
-      ? (S.syncMethod !== 'off' ? 'فعال ✔ (اشتراک صفحه جریان دارد)' : 'فعال — ولی روش همگام‌سازی خاموش است')
-      : (S.syncMethod === 'pixel' ? 'غیرفعال — با اولین K هم فعال می‌شود (یک‌بار Share بزن)' : 'غیرفعال');
+    S.ui.watchbtn.textContent = pxActive() ? '⏹ خاموش‌کردن دیده‌بان' : '🎥 فعال‌سازی دیده‌بان صفحه';
+    S.ui.watchstat.textContent = pxActive()
+      ? (MAP.ok ? 'فعال ✔ + کالیبره' : 'فعال (بدون کالیبراسیون)')
+      : 'غیرفعال';
   }
 
-  /* ---------- تنظیمات ذخیره‌شده ---------- */
+  /* ---------- تنظیمات ---------- */
   function loadSettings() {
     try {
       const c = JSON.parse(localStorage.getItem(LS_KEY) || 'null') || {};
@@ -225,18 +374,20 @@
       if (c.stopSec != null && Number.isFinite(+c.stopSec)) S.stopSec = Math.min(10, Math.max(0.1, +c.stopSec));
       if (c.gapMs   != null && Number.isFinite(+c.gapMs))   S.gapMs   = Math.min(500, Math.max(0, Math.round(+c.gapMs)));
       if (c.leadMs  != null && Number.isFinite(+c.leadMs))  S.leadMs  = Math.min(500, Math.max(-200, Math.round(+c.leadMs)));
+      if (c.thresh  != null && Number.isFinite(+c.thresh))  S.thresh  = Math.min(100, Math.max(1, Math.round(+c.thresh)));
       if (c.syncComp != null && Number.isFinite(+c.syncComp)) S.syncComp = Math.min(300, Math.max(0, Math.round(+c.syncComp)));
-      if (['pixel', 'dom', 'off'].includes(c.syncMethod)) S.syncMethod = c.syncMethod;
+      if (['canvas', 'pixel', 'off'].includes(c.method)) S.method = c.method;
       if (c.anchor === 'release' || c.anchor === 'press') S.anchor = c.anchor;
       if (typeof c.autoRearm === 'boolean') S.autoRearm = c.autoRearm;
+      if (typeof c.failClick === 'boolean') S.failClick = c.failClick;
     } catch (e) {}
   }
   function saveSettings() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify({
         hotkey: S.hotkey, delayMs: S.delayMs, stopSec: S.stopSec, gapMs: S.gapMs,
-        anchor: S.anchor, leadMs: S.leadMs, syncMethod: S.syncMethod, syncComp: S.syncComp,
-        autoRearm: S.autoRearm,
+        anchor: S.anchor, leadMs: S.leadMs, method: S.method, thresh: S.thresh,
+        syncComp: S.syncComp, autoRearm: S.autoRearm, failClick: S.failClick,
       }));
     } catch (e) {}
   }
@@ -246,16 +397,17 @@
   function normNum(s) {
     s = String(s == null ? '' : s).trim();
     const fa = '۰۱۲۳۴۵۶۷۸۹', ar = '٠١٢٣٤٥٦٧٨٩';
-    return s
-      .replace(/[۰-۹]/g, (d) => fa.indexOf(d))
-      .replace(/[٠-٩]/g, (d) => ar.indexOf(d))
-      .replace(/[٫،؛:,\/]/g, '.');
+    return s.replace(/[۰-۹]/g, (d) => fa.indexOf(d)).replace(/[٠-٩]/g, (d) => ar.indexOf(d))
+            .replace(/[٫،؛:,\/]/g, '.');
   }
   function keyLabel() {
     if (!S.hotkey) return '—';
-    if (/^Key./.test(S.hotkey))   return S.hotkey.slice(3);
+    if (/^Key./.test(S.hotkey)) return S.hotkey.slice(3);
     if (/^Digit./.test(S.hotkey)) return S.hotkey.slice(5);
     return S.hotkey;
+  }
+  function methodName(m) {
+    return m === 'canvas' ? 'canvas مستقیم' : m === 'pixel' ? 'پیکسل (اشتراک صفحه)' : 'باز (تأخیر ثابت)';
   }
   function epochNow() { return performance.timeOrigin + performance.now(); }
   function send(msg) {
@@ -272,7 +424,7 @@
     <style>
       #dk5sr-root{position:fixed;top:120px;right:16px;z-index:2147483646;direction:rtl;
         font-family:Vazirmatn,'Segoe UI',Tahoma,sans-serif;font-size:12px;color:#e8eaf0;
-        background:#141822;border:1px solid #2b3344;border-radius:12px;width:250px;
+        background:#141822;border:1px solid #2b3344;border-radius:12px;width:252px;
         box-shadow:0 10px 34px rgba(0,0,0,.4);user-select:none;line-height:1.7}
       #dk5sr-root *{box-sizing:border-box;margin:0;padding:0;font-family:inherit}
       #dk5sr-root input{user-select:text}
@@ -291,12 +443,17 @@
       #dk5sr-big{font-size:27px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px;direction:ltr}
       #dk5sr-big.run{color:#f1c40f}
       #dk5sr-sub{font-size:10px;color:#7d8798;min-height:13px}
-      #dk5sr-pagecounter{font-size:10.5px;color:#7d8798;text-align:center;margin:5px 0;min-height:14px}
+      #dk5sr-health{font-size:10.5px;text-align:center;margin:5px 0 2px;min-height:14px;color:#7d8798}
+      #dk5sr-delta{font-size:10.5px;text-align:center;color:#7d8798;min-height:14px;direction:ltr;
+        font-variant-numeric:tabular-nums;margin-bottom:4px}
       #dk5sr-watch{margin:7px 0}
       #dk5sr-watchbtn{display:block;width:100%;padding:7px;background:#1f2740;border:1px solid #33406b;color:#bcd0ff;border-radius:9px;cursor:pointer;font-size:11.5px;font-weight:700}
       #dk5sr-watchbtn:hover{background:#26304f}
       #dk5sr-watchbtn:disabled{opacity:.5;cursor:wait}
       #dk5sr-watchstat{font-size:10px;color:#7d8798;margin-top:4px;text-align:center;min-height:13px}
+      #dk5sr-watchtest{display:block;width:100%;margin:6px 0;padding:7px;background:#33261f;border:1px solid #6b4a33;
+        color:#ffcdb0;border-radius:9px;cursor:pointer;font-size:11.5px;font-weight:700}
+      #dk5sr-watchtest:hover{background:#402e24}
       #dk5sr-root .dk5sr-row{display:flex;align-items:center;gap:6px;margin:6px 0}
       #dk5sr-root .dk5sr-row label{flex:1;font-size:11px;color:#c3cad8}
       #dk5sr-root .dk5sr-row input,#dk5sr-root .dk5sr-row select{width:82px;flex:none;background:#0d1017;color:#e8eaf0;border:1px solid #2b3344;border-radius:7px;padding:4px 4px;font-size:12px;text-align:center;direction:ltr}
@@ -315,25 +472,28 @@
     </style>
     <div id="dk5sr-head">
       <span id="dk5sr-dot"></span>
-      <span id="dk5sr-title">⏱ دستیار ۵ ثانیه (CDP v3)</span>
+      <span id="dk5sr-title">⏱ دستیار ۵ ثانیه (v3.2)</span>
       <button id="dk5sr-min" title="جمع‌کردن پنل">–</button>
     </div>
     <div id="dk5sr-body">
       <div id="dk5sr-status"></div>
       <div id="dk5sr-readout"><div id="dk5sr-big">—</div><div id="dk5sr-sub"></div></div>
-      <div id="dk5sr-pagecounter">شمارندهٔ صفحه: —</div>
+      <div id="dk5sr-health">⏱ تایمر: …</div>
+      <div id="dk5sr-delta">Δ: —</div>
       <div id="dk5sr-watch">
         <button id="dk5sr-watchbtn">🎥 فعال‌سازی دیده‌بان صفحه</button>
         <div id="dk5sr-watchstat">غیرفعال</div>
       </div>
+      <button id="dk5sr-watchtest">🧪 تست تماشا (بدون کلیک)</button>
       <div class="dk5sr-row"><label>کلید میان‌بر (تایپ کن)</label><input id="dk5sr-key" readonly></div>
       <div class="dk5sr-row"><label>روش همگام‌سازی شروع</label>
         <select id="dk5sr-method">
-          <option value="pixel">پیکسل (پیشنهادی)</option>
-          <option value="dom">DOM (در صورت وجود متن)</option>
+          <option value="canvas">canvas مستقیم (پیشنهادی)</option>
+          <option value="pixel">پیکسل + اشتراک صفحه</option>
           <option value="off">خاموش (تأخیر ثابت)</option>
         </select>
       </div>
+      <div class="dk5sr-row"><label>آستانهٔ Δ تشخیص حرکت</label><input id="dk5sr-thresh" type="number" step="1" min="1" max="100"></div>
       <div class="dk5sr-row"><label>جبران تأخیر تریگر (ms)</label><input id="dk5sr-comp" type="number" step="1" min="0" max="300"></div>
       <div class="dk5sr-row"><label>تأخیر بعد از کلیک شروع (ms)</label><input id="dk5sr-delay" type="number" step="10" min="0" max="2000"></div>
       <div class="dk5sr-row"><label>زمان توقف / آفست (ثانیه)</label><input id="dk5sr-stop" type="text" inputmode="decimal" placeholder="5.00"></div>
@@ -346,13 +506,14 @@
       </div>
       <div class="dk5sr-row"><label>پیش‌ارسال CDP (ms)</label><input id="dk5sr-lead" type="number" step="1" min="-200" max="500"></div>
       <label class="dk5sr-check"><input type="checkbox" id="dk5sr-auto"> آماده‌سازی خودکار برای تلاش بعدی</label>
+      <label class="dk5sr-check"><input type="checkbox" id="dk5sr-failclick"> کلیک اضطراری هنگام شکست همگام‌سازی</label>
       <div id="dk5sr-total"></div>
       <div id="dk5sr-testhint">کلید <b>T</b> = کلیک تستیِ trusted در محل موس</div>
       <button id="dk5sr-reset">⟳ ریست — آمادهٔ کلید میان‌بر</button>
       <div id="dk5sr-log"></div>
-      <div id="dk5sr-help">روش «پیکسل» با دیدن اولین حرکتِ canvas تایمر بازی، شمارش را شروع می‌کند —
-        مکث تصادفی شروعِ بازی دیگر اهمیتی ندارد. اول یک‌بار دیده‌بان را با 🎥 (یا اولین K)
-        فعال کن و در کادر Share همین تب را تأیید کن. پنل را روی تایمر نگذار.</div>
+      <div id="dk5sr-help">موتور v3.2 فقط «تغییرات پیاپی» را به‌عنوان شمارش قبول می‌کند (۵ تغییر در ۴۵۰ms) —
+        انیمیشن idle دیگر تریگر نمی‌زند. اول با 🧪 تست تماشا موتور را بی‌خیال شانس امتحان کن:
+        در حالت idle باید بگوید «الگویی دیده نشد»، با شروع دستی بازی باید ⚡ بزند.</div>
     </div>`;
     (document.body || document.documentElement).appendChild(root);
 
@@ -361,16 +522,19 @@
       root,
       head: q('#dk5sr-head'), dot: q('#dk5sr-dot'), min: q('#dk5sr-min'),
       body: q('#dk5sr-body'), status: q('#dk5sr-status'),
-      big: q('#dk5sr-big'), sub: q('#dk5sr-sub'), page: q('#dk5sr-pagecounter'),
-      watchbtn: q('#dk5sr-watchbtn'), watchstat: q('#dk5sr-watchstat'),
-      key: q('#dk5sr-key'), method: q('#dk5sr-method'), comp: q('#dk5sr-comp'),
+      big: q('#dk5sr-big'), sub: q('#dk5sr-sub'), health: q('#dk5sr-health'), delta: q('#dk5sr-delta'),
+      watch: q('#dk5sr-watch'), watchbtn: q('#dk5sr-watchbtn'), watchstat: q('#dk5sr-watchstat'),
+      watchtest: q('#dk5sr-watchtest'),
+      key: q('#dk5sr-key'), method: q('#dk5sr-method'), thresh: q('#dk5sr-thresh'), comp: q('#dk5sr-comp'),
       delay: q('#dk5sr-delay'), stop: q('#dk5sr-stop'),
       gap: q('#dk5sr-gap'), anchor: q('#dk5sr-anchor'), lead: q('#dk5sr-lead'),
-      auto: q('#dk5sr-auto'), total: q('#dk5sr-total'), reset: q('#dk5sr-reset'), log: q('#dk5sr-log'),
+      auto: q('#dk5sr-auto'), failclick: q('#dk5sr-failclick'),
+      total: q('#dk5sr-total'), reset: q('#dk5sr-reset'), log: q('#dk5sr-log'),
     };
 
     S.ui.key.value = keyLabel();
-    S.ui.method.value = S.syncMethod;
+    S.ui.method.value = S.method;
+    S.ui.thresh.value = String(S.thresh);
     S.ui.comp.value = String(S.syncComp);
     S.ui.delay.value = String(S.delayMs);
     S.ui.stop.value = S.stopSec.toFixed(2);
@@ -378,6 +542,7 @@
     S.ui.anchor.value = S.anchor;
     S.ui.lead.value = String(S.leadMs);
     S.ui.auto.checked = S.autoRearm;
+    S.ui.failclick.checked = S.failClick;
 
     S.ui.key.addEventListener('keydown', (e) => {
       e.preventDefault(); e.stopPropagation();
@@ -388,7 +553,11 @@
       pushLog('کلید میان‌بر: «' + keyLabel() + '»');
     });
 
-    S.ui.method.addEventListener('change', () => { S.syncMethod = S.ui.method.value; saveSettings(); syncDependentUI(); });
+    S.ui.method.addEventListener('change', () => { S.method = S.ui.method.value; saveSettings(); syncDependentUI(); });
+    S.ui.thresh.addEventListener('input', () => {
+      const v = parseInt(S.ui.thresh.value, 10);
+      if (Number.isFinite(v)) { S.thresh = Math.min(100, Math.max(1, v)); saveSettings(); updateDeltaUI(); }
+    });
     S.ui.comp.addEventListener('input', () => {
       const v = parseInt(S.ui.comp.value, 10);
       if (Number.isFinite(v)) { S.syncComp = Math.min(300, Math.max(0, v)); saveSettings(); updateTotal(); }
@@ -412,10 +581,13 @@
     });
     S.ui.anchor.addEventListener('change', () => { S.anchor = S.ui.anchor.value; saveSettings(); updateTotal(); });
     S.ui.auto.addEventListener('change', () => { S.autoRearm = S.ui.auto.checked; saveSettings(); });
+    S.ui.failclick.addEventListener('change', () => { S.failClick = S.ui.failclick.checked; saveSettings(); });
+
     S.ui.watchbtn.addEventListener('click', toggleWatcher);
+    S.ui.watchtest.addEventListener('click', startWatchTest);
     S.ui.reset.addEventListener('click', resetRun);
 
-    [S.ui.comp, S.ui.delay, S.ui.stop, S.ui.gap, S.ui.lead].forEach((inp) => {
+    [S.ui.thresh, S.ui.comp, S.ui.delay, S.ui.stop, S.ui.gap, S.ui.lead].forEach((inp) => {
       inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); });
       inp.addEventListener('change', () => inp.blur());
     });
@@ -445,22 +617,27 @@
 
     syncDependentUI();
     updateWatcherUI();
+    updateDeltaUI();
   }
 
   function syncDependentUI() {
     if (!S.ui.delay) return;
-    const sync = S.syncMethod !== 'off';
-    S.ui.delay.disabled = sync;   /* در حالت همگام، تأخیر بی‌معناست */
+    const sync = S.method !== 'off';
+    S.ui.delay.disabled = sync;
+    S.ui.thresh.disabled = !sync;
     S.ui.comp.disabled = !sync;
+    S.ui.watch.style.display = S.method === 'pixel' ? '' : 'none';
+    S.ui.watchtest.style.display = sync ? '' : 'none';
     updateTotal();
   }
 
-  /* ---------- وضعیت / لاگ ---------- */
+  /* ---------- وضعیت / لاگ / سلامت ---------- */
   function refreshStatus() {
     if (!S.ui.status) return;
     if (S.phase === 'armed') {
       S.ui.dot.className = 'on';
-      S.ui.status.textContent = 'آماده ✔ موس روی دکمهٔ «شروع» + کلید «' + keyLabel() + '»';
+      S.ui.status.textContent = S.testing ? '🧪 تست تماشا در جریان…' :
+        'آماده ✔ موس روی دکمهٔ «شروع» + کلید «' + keyLabel() + '»';
     } else if (S.phase === 'running') {
       S.ui.dot.className = 'run';
       S.ui.status.textContent = 'در حال اجرا…';
@@ -471,8 +648,8 @@
   }
   function updateTotal() {
     if (!S.ui.total) return;
-    if (S.syncMethod !== 'off') {
-      S.ui.total.textContent = 'اولین حرکت تایمر ← ' + S.stopSec.toFixed(2) + 's − جبران ' + S.syncComp + 'ms ← press توقف';
+    if (S.method !== 'off') {
+      S.ui.total.textContent = 'اولین تغییرِ پیاپی تایمر ← ' + S.stopSec.toFixed(2) + 's − جبران ' + S.syncComp + 'ms ← press توقف';
     } else {
       const eff = S.delayMs + S.stopSec * 1000 - (S.anchor === 'release' ? S.gapMs : 0) - S.leadMs;
       S.ui.total.textContent = 'از press شروع تا press توقف: ~' + Math.round(eff) + 'ms';
@@ -485,64 +662,16 @@
     S.ui.log.prepend(div);
     while (S.ui.log.children.length > 14) S.ui.log.lastChild.remove();
   }
-
-  /* ---------- خواندن شمارندهٔ متنی (برای حالت DOM و نمایش) ---------- */
-  function findCounterCandidates() {
-    const out = [];
-    if (!document.body) return out;
-    const seen = new Set();
-    const visit = (rootNode, depth) => {
-      if (!rootNode || depth > 6 || seen.has(rootNode)) return;
-      seen.add(rootNode);
-      try {
-        const all = rootNode.querySelectorAll('*');
-        for (let i = 0; i < all.length; i++) {
-          const el = all[i];
-          if (depth === 0 && el.closest && el.closest('#' + ROOT_ID)) continue;
-          const raw = (el.textContent || '').trim();
-          if (raw.length < 3 || raw.length > 6) continue;
-          const n = normNum(raw);
-          if (!/^\d{1,2}\.\d{1,2}$/.test(n)) continue;
-          if (!el.getClientRects().length) continue;
-          el._dk5sr_v = n;
-          out.push(el);
-        }
-        for (let i = 0; i < all.length; i++) {
-          if (all[i].shadowRoot) visit(all[i].shadowRoot, depth + 1);
-        }
-      } catch (e) {}
-    };
-    visit(document.body, 0);
-    return out;
-  }
-  function findTimerEl() {
-    const cands = findCounterCandidates();
-    if (!cands.length) return null;
-    return cands.find((el) => el._dk5sr_v === '00.00')
-        || cands.find((el) => /^0\d\./.test(el._dk5sr_v))
-        || cands[0];
-  }
-  function updateCounterEl() {
-    const t = performance.now();
-    if (t - S.lastScan < 350) return;
-    S.lastScan = t;
-    if (S.counterEl && !S.counterEl.isConnected) S.counterEl = null;
-    const cands = findCounterCandidates();
-    for (const el of cands) {
-      const prev = counterSnap.get(el);
-      if (prev !== undefined && prev !== el._dk5sr_v) { S.counterEl = el; break; }
-    }
-    for (const el of cands) counterSnap.set(el, el._dk5sr_v);
-    if (!S.counterEl && cands.length && S.timing && (epochNow() - S.timing.t0Date) > 1200) S.counterEl = cands[0];
-  }
-  function readCounterTextFrom(el) {
-    if (!el || !el.isConnected) return null;
-    const m = normNum(el.textContent).match(/^(\d{1,2})\.(\d{1,2})$/);
-    if (!m) return null;
-    return m[1] + '.' + (m[2] + '0').slice(0, 2);
+  function updateHealth() {
+    if (!S.ui.health) return;
+    const c = findTimerCanvas();
+    S.ui.health.textContent = c
+      ? '⏱ تایمر: ✔ ' + canvasDesc(c)
+      : '⏱ تایمر: ✖ canvas پیدا نشد';
+    S.ui.health.style.color = c ? '#7ec97e' : '#e07b7b';
   }
 
-  /* ---------- ردیابی دکمهٔ بازی در برابر اسکرول ---------- */
+  /* ---------- ردیابی دکمه (مصون از اسکرول) ---------- */
   function deepAt(x, y) {
     let el = document.elementFromPoint(x, y);
     let guard = 0;
@@ -597,72 +726,63 @@
     send({ type: 'dk5sr-coords', x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
   }
 
-  /* ---------- حالت DOM: تماشای متن شمارنده (پشتیبان) ---------- */
-  function armDomTrigger(tInject, onStart, onFail) {
-    let el = findTimerEl();
-    if (!el) { onFail('عنصر متنی شمارنده پیدا نشد'); return null; }
-    const getVal = (node) => {
-      const m = normNum((node && node.textContent) || '').trim().match(/^(\d{1,2})\.(\d{1,2})$/);
-      return m ? m[1] + '.' + (m[2] + '0').slice(0, 2) : null;
-    };
-    let baseVal = getVal(el);
-    if (baseVal == null) { onFail('متن شمارنده خوانا نیست'); return null; }
-    let done = false, mo = null, raf = 0, guard = 0;
-    const quietUntil = tInject + QUIET_MS;
-    const cleanup = () => { if (mo) mo.disconnect(); cancelAnimationFrame(raf); clearTimeout(guard); };
-    const check = () => {
-      if (done) return;
-      if (!el.isConnected) {
-        const nel = findTimerEl();
-        if (!nel) return;
-        el = nel;
-        if (mo) { mo.disconnect(); mo = null; }
-      }
-      if (!mo) { mo = new MutationObserver(check); mo.observe(el, { characterData: true, childList: true, subtree: true }); }
-      const now = Date.now();
-      const v = getVal(el);
-      if (v == null) return;
-      if (now < quietUntil) { baseVal = v; return; } /* ریستِ 00:00 را نادیده بگیر */
-      if (v !== baseVal) { done = true; cleanup(); onStart(now); return; }
-      baseVal = v;
-    };
-    mo = new MutationObserver(check);
-    mo.observe(el, { characterData: true, childList: true, subtree: true });
-    const loop = () => { if (!done) { check(); raf = requestAnimationFrame(loop); } };
-    raf = requestAnimationFrame(loop);
-    guard = setTimeout(() => { if (!done) { done = true; cleanup(); onFail('تا ۴ ثانیه تغییری در متن شمارنده ندیدم'); } }, 4000);
-    pushLog('👁 لنگر DOM: «' + baseVal + '»');
-    return { abort() { done = true; cleanup(); } };
-  }
-
-  /* ---------- تریگر مشترک: اولین حرکت دیدم ---------- */
-  function onTrigger(triggerEpoch) {
+  /* ---------- تریگر / شکست ---------- */
+  function onTrigger(triggerEpoch, st) {
+    if (S.testing) {
+      S.testing = false; refreshStatus();
+      pushLog('⚡ تریگر در حالت تست! (Δاوج=' + (st ? st.peak.toFixed(1) : '?') +
+              ', ' + (st ? st.total : '?') + ' تغییر) — موتور تشخیص سالم است ✔');
+      return;
+    }
     if (S.phase !== 'running') return;
     S.gameStartEpoch = triggerEpoch;
     let stopAt = triggerEpoch + S.runStopSec * 1000 - S.syncComp - S.leadMs;
     if (S.anchor === 'release') stopAt -= S.gapMs;
     S.stopAtEpoch = stopAt;
     if (S.timing) S.timing.tTargetDate = stopAt + (S.anchor === 'release' ? S.gapMs : 0);
-    pushLog('⚡ تریگر! اولین حرکت تایمر ثبت شد — press توقف ' + Math.max(0, stopAt - Date.now()) + 'ms دیگر');
+    pushLog('⚡ تریگر! ' + (st ? st.total : '?') + ' تغییر پیاپی، Δاوج ' +
+            (st ? st.peak.toFixed(1) : '?') + ' — press توقف ' + Math.max(0, stopAt - Date.now()) + 'ms دیگر');
     send({ type: 'dk5sr-arm-stop', stopAtEpoch: stopAt });
     [180, 60].forEach((before) => setTimeout(pushCoords, Math.max(0, stopAt - before - Date.now())));
   }
 
-  /* شکست همگام‌سازی: توقف اضطراری با حدسِ مکث (بهتر از دورریزِ شانس) */
   function onSyncFail(reason) {
+    if (S.testing) { S.testing = false; refreshStatus(); pushLog('🧪 تست: ' + reason); return; }
     if (S.phase !== 'running') return;
-    if (S.timing) {
+
+    if (S.failClick && S.timing) {
       const estStop = S.timing.t0Date + EST_PAUSE + S.runStopSec * 1000 - S.syncComp - S.leadMs
                     - (S.anchor === 'release' ? S.gapMs : 0);
-      pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — توقف اضطراری با حدسِ ' + EST_PAUSE + 'ms مکث!');
+      pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — کلیک اضطراری با حدسِ ' + EST_PAUSE + 'ms مکث');
       send({ type: 'dk5sr-arm-stop', stopAtEpoch: estStop });
       [180, 60].forEach((b) => setTimeout(pushCoords, Math.max(0, estStop - b - Date.now())));
     } else {
-      pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — اجرا لغو شد.');
+      pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — اجرا لغو شد؛ هیچ کلیکی زده نشد (بدون اتلاف شانس).');
       send({ type: 'dk5sr-cancel' });
-      S.phase = 'armed'; refreshStatus();
+      S.phase = 'armed'; S.syncRunning = false; refreshStatus();
       S.ui.big.textContent = '—'; S.ui.sub.textContent = '';
     }
+  }
+
+  /* ---------- 🧪 تست تماشا (بدون کلیک) ---------- */
+  function startWatchTest() {
+    if (S.phase === 'running') { pushLog('⏳ حین اجرا نمی‌شود.'); return; }
+    if (S.testing) { watchStop(); S.testing = false; refreshStatus(); pushLog('🧪 تست لغو شد.'); return; }
+    loadSettings();
+    let grab = null;
+    if (S.method === 'canvas') {
+      if (!cvProbe()) { pushLog('⚠ canvas قابل خواندن نیست — تست انجام نشد.'); return; }
+      grab = cvGrab;
+    } else if (S.method === 'pixel') {
+      if (!pxActive()) { pushLog('⚠ برای تست روش پیکسل، اول دیده‌بان (🎥) را فعال کن.'); return; }
+      grab = pxGrab;
+    } else {
+      pushLog('⚠ روش همگام‌سازی خاموش است — تست معنا ندارد.');
+      return;
+    }
+    S.testing = true; refreshStatus();
+    pushLog('🧪 تست تماشا فعال (۱۲ ثانیه، بدون کلیک): حالا بازی را دستی شروع کن…');
+    watchStart(grab, onTrigger, onSyncFail, 12000);
   }
 
   /* ---------- اجرا ---------- */
@@ -674,43 +794,38 @@
     refreshStatus();
     S.timing = null; S.arrivedStart = false; S.arrivedStop = false;
     S.stopArrivalEpoch = null; S.stopArrivalDate = null;
-    S.counterEl = null; S.lastPageTxt = null; S.lastScan = 0;
-    counterSnap = new Map();
+    S.gameStartEpoch = null; S.stopAtEpoch = null;
     S.origX = S.mouseX; S.origY = S.mouseY;
     S.runX = S.mouseX;  S.runY = S.mouseY;
     S.btnEl = deepAt(S.mouseX, S.mouseY);
     S.lastCoordsPush = 0; S.coordLogged = false;
-    S.gameStartEpoch = null; S.stopAtEpoch = null;
 
-    /* تعیین روش همگام‌سازی + fallback ها */
-    let method = S.syncMethod;
-    if (method === 'dom' && !findTimerEl()) {
-      pushLog('ℹ عنصر متنی شمارنده پیدا نشد (تایمر canvas است) — روش پیکسل امتحان می‌شود.');
-      method = 'pixel';
+    let method = S.method;
+
+    if (method === 'canvas') {
+      if (!cvProbe()) {
+        if (CV.tainted) { pushLog('⚠ خواندن bitmap تایمر ممکن نیست — روش پیکسل امتحان می‌شود.'); method = 'pixel'; }
+        else { pushLog('⚠ canvas تایمر پیدا نشد — حالت باز (تأخیر ثابت) اجرا می‌شود!'); method = 'off'; }
+      }
     }
+
     if (method === 'pixel') {
       if (!pxActive()) {
         S.ui.big.textContent = '…';
-        S.ui.sub.textContent = 'در انتظار تأیید اشتراک صفحه (Share)…';
-        pushLog('🎥 درخواست تصویر صفحه… در کادر بازشده، همین تب (از قبل انتخاب شده) را Share کن.');
+        S.ui.sub.textContent = 'در انتظار تأیید Share…';
+        pushLog('🎥 درخواست تصویر صفحه… همین تب را Share کن.');
         const ok = await ensureStream();
-        if (!ok) {
-          if (findTimerEl()) { method = 'dom'; pushLog('↩ Share لغو شد — روش DOM امتحان می‌شود.'); }
-          else { method = 'off'; pushLog('↩ Share لغو شد — حالت باز (تأخیر ثابت) اجرا می‌شود.'); }
-        }
+        if (!ok) { pushLog('↩ Share لغو شد — حالت باز اجرا می‌شود!'); method = 'off'; }
       }
       if (method === 'pixel') {
-        if (!findDigitsCanvas()) {
-          pushLog('⚠ canvas تایمر (…__digits 424×83) پیدا نشد — حالت باز اجرا می‌شود.');
-          method = 'off';
-        } else {
-          warnPanelOverlap();
-        }
+        if (!findTimerCanvas()) { pushLog('⚠ canvas تایمر پیدا نشد — حالت باز!'); method = 'off'; }
+        else if (!MAP.ok) await calibrateMapping();
       }
     }
+
     S.syncRunning = (method !== 'off');
 
-    /* مختصات press شروع: مرکز زندهٔ دکمه (مقاوم به شیفت بنر/اسکرول) */
+    /* مختصات press شروع: مرکز زندهٔ دکمه */
     let sx = S.mouseX, sy = S.mouseY;
     const btn = findStopButton();
     if (btn) {
@@ -721,10 +836,10 @@
     S.origX = sx; S.origY = sy;
     S.runX = sx;  S.runY = sy;
 
-    const tSend = Date.now();
-    pushLog(method === 'off'
-      ? '▶ حالت باز: press شروع از CDP…'
-      : '▶ حالت همگام (' + (method === 'pixel' ? 'پیکسل' : 'DOM') + '): press شروع از CDP…');
+    pushLog('▶ اجرا (' + methodName(method) + ') — press شروع از CDP…');
+    if (method !== 'off') {
+      pushLog('👁 زیر نظر: ' + canvasDesc(findTimerCanvas()) + ' | ناحیه: ۳۸٪ آخر | Δآستانه ' + S.thresh);
+    }
 
     send({
       type: 'dk5sr-run',
@@ -737,10 +852,11 @@
       leadMs: S.leadMs,
     });
 
-    if (method === 'pixel') {
-      startPxLoop(tSend, onTrigger, onSyncFail);
-    } else if (method === 'dom') {
-      S.domWatch = armDomTrigger(tSend, onTrigger, onSyncFail);
+    if (method === 'canvas') {
+      watchStart(cvGrab, onTrigger, onSyncFail, 4200);
+    } else if (method === 'pixel') {
+      showOutline(findTimerCanvas());
+      watchStart(pxGrab, onTrigger, onSyncFail, 4200);
     }
 
     cancelAnimationFrame(S.rafId);
@@ -754,19 +870,17 @@
 
   function renderReadout() {
     if (S.arrivedStop) return;
-
     const tNow = performance.now();
     if (tNow - S.lastCoordsPush > 250) { S.lastCoordsPush = tNow; pushCoords(); }
 
     if (S.gameStartEpoch != null) {
-      /* ⚡ حالت همگام: شمارش از اولین حرکتِ تایمر */
       const est  = (Date.now() - S.gameStartEpoch - S.syncComp) / 1000;
       const left = (S.stopAtEpoch - Date.now()) / 1000;
       S.ui.big.textContent = Math.max(0, est).toFixed(2);
       S.ui.sub.textContent = left > 0 ? 'press توقف تا ' + Math.max(0, left).toFixed(2) + ' ثانیه دیگر' : 'توقف…';
     } else if (S.syncRunning) {
       S.ui.big.textContent = '…';
-      S.ui.sub.textContent = 'در انتظار اولین حرکت تایمر بازی…';
+      S.ui.sub.textContent = 'در انتظار الگوی شمارش تایمر بازی…';
     } else if (!S.timing) {
       S.ui.big.textContent = '…';
       S.ui.sub.textContent = 'در حال اتصال دیباگر و dispatch شروع…';
@@ -783,15 +897,11 @@
       }
     }
     S.ui.big.classList.add('run');
-    updateCounterEl();
-    const txt = readCounterTextFrom(S.counterEl);
-    if (txt != null) S.lastPageTxt = txt;
-    S.ui.page.textContent = 'شمارندهٔ صفحه: ' + (S.lastPageTxt != null ? S.lastPageTxt : '— (canvas)');
   }
 
   function finishRun() {
     cancelAnimationFrame(S.rafId);
-    stopPxLoop();
+    watchStop();
     S.phase = 'done';
     refreshStatus();
     S.ui.big.classList.remove('run');
@@ -804,30 +914,8 @@
         : null;
     if (estAtStop != null) S.ui.big.textContent = estAtStop.toFixed(2);
 
-    const gameTxt = readCounterTextFrom(S.counterEl) || S.lastPageTxt;
-    let line = '■ پایان | داخلی در لحظهٔ توقف: ' + (estAtStop != null ? estAtStop.toFixed(2) + 's' : '—');
-    if (gameTxt != null) {
-      line += ' | بازی: ' + gameTxt;
-      const g = parseFloat(gameTxt);
-      if (Number.isFinite(g)) {
-        const err = 5.00 - g;
-        const sug = String(parseFloat((S.runStopSec + err).toFixed(3)));
-        line += ' | خطا: ' + (err >= 0 ? '+' : '') + err.toFixed(2) + 's → «زمان توقف» را ' + sug + ' بگذار';
-      }
-    } else {
-      line += ' | عدد بازی را خودت ببین: 05:00=برد؛ 04:99 → زمان توقف +0.01؛ 05:01 → −0.01';
-    }
-    pushLog(line);
-
-    /* آیا بازی واقعاً متوقف شد؟ */
-    const c1 = readCounterTextFrom(S.counterEl);
-    setTimeout(() => {
-      if (S.phase === 'running') return;
-      const c2 = readCounterTextFrom(S.counterEl);
-      if (c1 != null && c2 != null && c1 !== c2) {
-        pushLog('⚠ شمارندهٔ بازی هنوز حرکت می‌کند — کلیک توقف به دکمه نخورده!');
-      }
-    }, 450);
+    pushLog('■ پایان | داخلی در لحظهٔ توقف: ' + (estAtStop != null ? estAtStop.toFixed(2) + 's' : '—') +
+            ' | عدد بازی را خودت ببین: 05:00=برد • 04:99 → زمان توقف +0.01 • 05:01 → −0.01');
 
     if (S.autoRearm) {
       S.phase = 'armed';
@@ -841,20 +929,17 @@
   function resetRun() {
     const wasRunning = (S.phase === 'running');
     cancelAnimationFrame(S.rafId);
-    stopPxLoop();
-    if (S.domWatch) { S.domWatch.abort(); S.domWatch = null; }
+    watchStop();
+    S.testing = false;
     send({ type: 'dk5sr-cancel' });
     S.phase = 'armed';
     S.timing = null; S.arrivedStart = false; S.arrivedStop = false;
     S.stopArrivalEpoch = null; S.stopArrivalDate = null;
     S.gameStartEpoch = null; S.stopAtEpoch = null; S.syncRunning = false;
-    S.counterEl = null; S.lastPageTxt = null;
     S.btnEl = null; S.lastCoordsPush = 0; S.coordLogged = false;
-    counterSnap = new Map();
     S.ui.big.textContent = '—';
     S.ui.big.classList.remove('run');
     S.ui.sub.textContent = '';
-    S.ui.page.textContent = 'شمارندهٔ صفحه: —';
     refreshStatus();
     if (S.ui.reset) S.ui.reset.blur();
     pushLog(wasRunning ? '⟳ اجرا لغو و ریست شد' : '⟳ ریست شد — آمادهٔ کلید «' + keyLabel() + '»');
@@ -875,7 +960,7 @@
       }
       return;
     }
-    if (msg.type === 'dk5sr-done')   { if (S.phase === 'running') finishRun(); return; }
+    if (msg.type === 'dk5sr-done') { if (S.phase === 'running') finishRun(); return; }
     if (msg.type === 'dk5sr-cancelled') {
       S.phase = 'armed'; refreshStatus();
       S.ui.big.textContent = '—'; S.ui.sub.textContent = '';
@@ -883,7 +968,7 @@
     }
   });
 
-  /* اندازه‌گیری «واقعیِ» رسیدن رویدادها + فریز در لحظهٔ توقف */
+  /* اندازه‌گیری رسیدن واقعی رویدادها + فریز لحظهٔ توقف */
   window.addEventListener('pointerdown', (e) => {
     if (!e.isTrusted || S.phase !== 'running' || !S.timing) return;
     const arrival = epochNow();
@@ -920,6 +1005,7 @@
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     if (e.repeat) return;
+    if (S.testing) { pushLog('🧪 تست تماشا در جریان است — با «ریست» یا پایان تست.'); return; }
 
     if (e.code === 'KeyT' && S.hotkey !== 'KeyT') {
       e.preventDefault();
@@ -952,7 +1038,11 @@
       buildPanel();
       refreshStatus();
       updateTotal();
-      pushLog('نسخهٔ ۳.۰ فعال شد ✔ (همگام‌سازی پیکسلی + اتصال پایدار). اول یک‌بار 🎥 یا K → Share همین تب.');
+      pushLog('نسخهٔ ۳.۲ فعال شد ✔ (موتور burst: تغییرات پیاپی). اول «🧪 تست تماشا» را امتحان کن.');
+    }
+    if (S.active && S.bootstrapped && !WATCH.active && Date.now() - S.lastHealth > 3000) {
+      S.lastHealth = Date.now();
+      updateHealth();
     }
   }
   tick();
