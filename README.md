@@ -144,32 +144,12 @@ Screenshot
 
 ---
 
-### 🎯 راهنمای استفاده و کالیبراسیون (قانون طلایی)
+### 🎯 راهنمای استفاده و کالیبراسیون
 
-> ⚠️ **اصل اساسی:** ملاک کالیبراسیون، **تنها عددی است که خودِ بازی ثبت می‌کند** (نه زمان روی پنل و نه حدس ذهنی).
-
-| عدد ثبت‌شده در بازی | اقدام اصلاحی |
-| :--- | :--- |
-| **`05:00` (همراه با برد)** | 🎉 موفقیت‌آمیز! کد تخفیف را دریافت کنید. |
-| **`05:00` (بدون برد)** | «زمان توقف» را دقیقاً در مرکز پنجرهٔ شانس قرار دهید (مثلاً `4.995`). |
-| **`04:99`** | «زمان توقف» را `+0.01` افزایش دهید (یا «جبران تریگر» را `+10ms`). |
-| **`05:01`** | «زمان توقف» را `-0.01` کاهش دهید (یا «جبران تریگر» را `-10ms`). |
-| **نوسان بین دو عدد** | اثر کوانتیزاسیون فریم رندر است؛ هدف را وسط پنجره بگذارید (اعشار سه‌رقمی مجاز است). |
-
-#### 📌 نکات کلیدی کالیبراسیون
-
-* **اول تست، بعد شانس:** قبل از اولین اجرای واقعی، دکمهٔ **🧪 «تست تماشا»** را بزنید، بازی را دستی شروع کنید و ببینید موتور تریگر می‌زند — این تست هیچ کلیکی نمی‌زند و هیچ شانسی مصرف نمی‌کند.
-* **تفاوت زمان پنل با بازی:** عدد پنل، ساعتِ داخلی افزونه است و ملاک نیست؛ همیشه فقط عدد بازی را ببینید.
-* **عدم رفرش در حین کالیبراسیون:** بین تلاش‌های متوالی صفحه را Refresh نکنید؛ تنظیمات در `localStorage` حفظ می‌شوند ولی شرایط رندر بازی عوض می‌شود.
-
----
-
-### 📝 یادداشت‌های میدانی (تجربیات فنی)
-
-* 🛑 **نوار دیباگ کروم:** پیام بالای مرورگر مبنی بر `"Extension started debugging this browser"` طبیعی است. آن را Cancel نکنید؛ پس از اتمام عملیات خودکار بسته می‌شود.
-* 🛑 **تداخل DevTools:** ابزار DevTools (Inspect) نباید روی همان تب باز باشد؛ پروتکل CDP اجازهٔ اتصال هم‌زمان دو دیباگر به یک تب را نمی‌دهد.
-* 🛑 **تنظیمات نمایش:** میزان Zoom پیج روی `100%` باشد. در حین اجرا اسکرول نکنید. زبان کیبورد روی انگلیسی باشد!
-* 🛑 **تداخل اسکریپت‌ها:** در صورت فعال بودن اسکریپت‌های مشابه در Tampermonkey، آن‌ها را غیرفعال کنید تا از اجرای هم‌زمان روی کلید `K` جلوگیری شود.
+* **فعال کردن افزوله قبل استارت بازی:** ابتدا کلید `T` وقتی موس در فضای خالی است زده شود تا `CDP` فعال شود، همیشه ثانیه شمار بازی روی 00:00 باشد قبل از انکه موس را روی شروع بازی برده و کلید `K` را بزنید.
+* **نوار دیباگ کروم:** پیام بالای مرورگر مبنی بر `"Extension started debugging this browser"` طبیعی است. آن را Cancel نکنید؛ پس از اتمام عملیات خودکار بسته می‌شود.
+* **تداخل DevTools:** ابزار DevTools (Inspect) نباید روی همان تب باز باشد؛ پروتکل CDP اجازهٔ اتصال هم‌زمان دو دیباگر به یک تب را نمی‌دهد.
+* **تنظیمات نمایش:** میزان Zoom پیج روی `100%` باشد. در حین اجرا اسکرول نکنید. زبان کیبورد روی انگلیسی باشد!
 * 🩺 **اگر تریگر نشد:** اگر لاگ گفت «الگوی شمارش دیده نشد»، یعنی بازی شروع نشده یا آستانه نامناسب است — با 🧪 عیب‌یابی کنید و «آستانهٔ Δ» را تنظیم کنید. اجرا خودکار بدون کلیک لغو شده است.
 
 ---
@@ -336,32 +316,12 @@ With clicks solved, a subtler enemy remained: the **random startup pause**. Any 
 
 ## 🎯 Usage & Calibration Protocol
 
-> ⚠️ **Golden Rule:** Calibration decisions must be based **exclusively on the timing value displayed by the game UI itself** — ignore panel estimates or perceived timing.
-
-| Game Display | Action Required |
-| :--- | :--- |
-| **`05:00` (Win)** | 🎉 Calibration complete! Claim coupon. |
-| **`05:00` (No Win)** | Target the center of the millisecond window (e.g., `4.995`). |
-| **`04:99`** | Increment Stop Time by `+0.01`s (or Trigger Compensation `+10ms`). |
-| **`05:01`** | Decrement Stop Time by `-0.01`s (or Trigger Compensation `-10ms`). |
-| **Bouncing Values** | Render-frame quantization at work; aim for the middle of the window. |
-
-### Operational Nuances
-
-* **Test First, Spend Later:** Before your first real run, press **🧪 Watch Test**, start the game manually and confirm the engine triggers — this test performs no clicks and burns no attempts.
-* **Panel vs. Game:** The panel's number is the extension's internal clock, not a reference. Only the game's number matters.
-* **Persistence:** Don't refresh between calibration attempts; settings persist in `localStorage`, but the game's rendering conditions change on reload.
-
----
-
-## ⚠️ Field Notes & Edge Cases
-
-* 🛑 **Chrome Debugger Banner:** The infobar stating `"Extension started debugging this browser"` is expected. Do not click *Cancel*; it detaches automatically upon completion.
-* 🛑 **DevTools Conflict:** Do not open DevTools on the active game tab — Chrome allows one debugger per tab.
-* 🛑 **Viewport Scale:** Browser zoom strictly `100%`. No manual scrolling during a run. Keyboard layout in English!
-* 🛑 **Extension Conflicts:** Disable userscripts targeting the same hotkeys (`K`).
-* 🩺 **No Trigger?** If the log reports "no counting pattern seen", the game never started or the threshold is off — debug with 🧪 and adjust the Δ threshold. The run was already cancelled cleanly with no stop click fired.
-
+* **Enable the extension before starting the game:** First, press the `T` key while your mouse is over a blank area to activate `CDP`. Ensure the game timer reads 00:00 before moving your mouse over the start button and pressing the `K` key.
+* **Chrome Debug Banner:** The message at the top of the browser stating `"Extension started debugging this browser"` is normal. Do not click Cancel; it will close automatically after the automated operation finishes.
+* **DevTools Conflict:** The DevTools (Inspect) tool must not be open on that same tab; the CDP protocol does not allow two debuggers to connect to a single tab simultaneously.
+* **Display Settings:** Page zoom level must be set to `100%`. Do not scroll during execution. Ensure your keyboard layout is set to English!
+* 🩺 **If it doesn't trigger:** If the log says "Count pattern not detected," it means the game hasn't started or the threshold is incorrect — troubleshoot with 🧪 and adjust the "Δ threshold." Automated execution without clicking has been cancelled.
+  
 ---
 
 ## ⚖️ Limitations & Disclaimer
