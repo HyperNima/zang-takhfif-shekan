@@ -6,8 +6,7 @@
 🇮🇷 [فارسی](#-فارسی) | 🇬🇧 [English](#-english)
 
 <!-- 
-Screenshot placeholder — uncomment when you add one:
-![پنل افزونه در کنار بازی](docs/panel-screenshot.png)
+Screenshot
 -->
 
 ---

@@ -1,24 +1,26 @@
-/* content.js — نسخهٔ ۳.۲
-   ⚡ موتور جدید «burst»: مقایسهٔ فریم‌به‌فریم + نرخ تغییر (۵ تغییر پیاپی در ۴۵۰ms)
-      → انیمیشن idle/درخشش/چشمک تایمر دیگر تریگر نمی‌زند؛ فقط تیکِ واقعی صدم‌ثانیه‌ها.
-   👁 ناحیهٔ تحت نظر: ۳۸٪ آخر canvas (رقم صدم‌ثانیه — چشمک دونقطه بیرون ناحیه).
-   🧪 دکمهٔ «تست تماشا بدون کلیک» + نمایشگر Δ برای دیدن نویز/سیگنال.
-   ⛔ شکست تشخیص = بدون کلیک اضطراری (پیش‌فرض) — بدون اتلاف شانس. */
+/* content.js — نسخهٔ ۳.۲.۱
+   منطق = همان ۳.۲ موفق (بدون هیچ تغییری):
+     ⚡ موتور burst: مقایسهٔ فریم‌به‌فریم + ۵ تغییر پیاپی در ۴۵۰ms
+     👁 ناحیهٔ ۳۸٪ آخر canvas (رقم صدم‌ثانیه)
+     🧪 تست تماشا بدون کلیک + نمایشگر Δ
+   تغییرات این نسخه فقط UI:
+     • پنل نصف شد — نمایشگر و ریست ثابت، تنظیمات با اسکرول
+     • گزینهٔ «کلیک اضطراری» حذف شد (شکست همگام‌سازی = لغو بدون کلیک) */
 
 (() => {
   'use strict';
   if (window.self !== window.top) return;
 
-  const LS_KEY  = 'dk_5sr_cdp_settings_v4';
+  const LS_KEY  = 'dk_5sr_cdp_settings_v4';   /* همان کلید ۳.۲ — کالیبراسیون حفظ می‌شود */
   const ROOT_ID = 'dk5sr-root';
   const GAME_RE = /five-second-rush/i;
 
   const BURST_MIN = 5;     /* حداقل تعداد تغییر فریم‌به‌فریم برای تأیید شمارش */
   const BURST_WIN = 450;   /* پنجرهٔ زمانی تأیید (ms) */
   const BURST_GAP = 500;   /* بیشینهٔ فاصلهٔ مجاز بین دو تغییر متوالی (ms) */
-  const EST_PAUSE = 160;   /* حدس مکث — فقط برای حالت «کلیک اضطراری» (خاموش پیش‌فرض) */
   const PX_W = 64, PX_H = 14;
   const ZONE_X = 0.62;     /* ناحیهٔ تحت نظر: از ۶۲٪ عرض canvas تا آخر */
+  const PANEL_MAXH = 520;  /* حداکثر ارتفاع پنل (px) — قابل تغییر */
 
   const S = {
     active: false, bootstrapped: false,
@@ -28,7 +30,7 @@
     thresh: 8,                   /* آستانهٔ Δ فریم‌به‌فریم */
     syncComp: 20,
     delayMs: 80, stopSec: 5.00, gapMs: 90,
-    anchor: 'press', leadMs: 0, autoRearm: false, failClick: false,
+    anchor: 'press', leadMs: 0, autoRearm: false,
     mouseX: null, mouseY: null,
     origX: 0, origY: 0, runX: 0, runY: 0,
     runDelayMs: 80, runStopSec: 5.00, syncRunning: false, testing: false,
@@ -81,7 +83,7 @@
       ' (' + (el.getAttribute('width') || '?') + '×' + (el.getAttribute('height') || '?') + ')';
   }
 
-  /* ================= خواندن مستقیم bitmap (روش canvas) — فقط ناحیهٔ رقم صدم‌ثانیه ================= */
+  /* ================= خواندن مستقیم bitmap (روش canvas) ================= */
   const CV = { el: null, scratch: null, sctx: null, tainted: false, lastFind: 0 };
 
   function cvGrab() {
@@ -112,7 +114,7 @@
     return !CV.tainted && !!cvGrab();
   }
 
-  /* ================= موتور تماشا «burst» (فریم‌به‌فریم + نرخ تغییر) ================= */
+  /* ================= موتور تماشا «burst» ================= */
   const WATCH = {
     active: false, grab: null, lastFrame: null, quietUntil: 0,
     events: [], burstStart: 0,
@@ -136,7 +138,7 @@
     WATCH.onMotion = onMotion; WATCH.onFail = onFail;
     WATCH.lastFrame = null; WATCH.events = []; WATCH.burstStart = 0;
     WATCH.dLast = 0; WATCH.dPeak = 0; WATCH.evtTotal = 0;
-    WATCH.quietUntil = Date.now() + 150;      /* ری‌پینت لحظهٔ کلیک شروع را نادیده بگیر */
+    WATCH.quietUntil = Date.now() + 150;
     WATCH.iv = setInterval(watchTick, 5);
     const loop = () => { if (!WATCH.active) return; watchTick(); WATCH.raf = requestAnimationFrame(loop); };
     WATCH.raf = requestAnimationFrame(loop);
@@ -169,7 +171,6 @@
         }
         while (WATCH.events.length && now - WATCH.events[0] > BURST_WIN) WATCH.events.shift();
 
-        /* ★ تأیید: تعداد کافی تغییرِ پیاپی در پنجره = شمارش واقعی */
         if (WATCH.events.length >= BURST_MIN) {
           const t = WATCH.burstStart;
           const st = { peak: WATCH.dPeak, total: WATCH.evtTotal };
@@ -206,7 +207,7 @@
     }
   }
 
-  /* ================= روش pixel (پشتیبان): اشتراک صفحه + کالیبراسیون ================= */
+  /* ================= روش pixel (پشتیبان) ================= */
   const PX = { stream: null, video: null, canvas: null, ctx: null, el: null, lastFind: 0 };
   const MAP = { ok: false, sx: 1, sy: 1, dx: 0, dy: 0 };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -301,7 +302,6 @@
     }
     const r = PX.el.getBoundingClientRect();
     if (r.width < 10 || r.height < 10) return null;
-    /* فقط ناحیهٔ رقم صدم‌ثانیه (۳۸٪ آخر) */
     const zx = r.left + r.width * ZONE_X, zw = r.width * (1 - ZONE_X);
     const x = Math.floor(zx * MAP.sx + MAP.dx);
     const y = Math.floor(r.top * MAP.sy + MAP.dy);
@@ -312,7 +312,6 @@
     return PX.ctx.getImageData(0, 0, PX_W, PX_H).data;
   }
 
-  /* کادر خط‌چین دور canvas (فقط روش pixel — اطمینان چشمی) */
   let outlineEl = null;
   function showOutline(el) {
     hideOutline();
@@ -379,7 +378,6 @@
       if (['canvas', 'pixel', 'off'].includes(c.method)) S.method = c.method;
       if (c.anchor === 'release' || c.anchor === 'press') S.anchor = c.anchor;
       if (typeof c.autoRearm === 'boolean') S.autoRearm = c.autoRearm;
-      if (typeof c.failClick === 'boolean') S.failClick = c.failClick;
     } catch (e) {}
   }
   function saveSettings() {
@@ -387,7 +385,7 @@
       localStorage.setItem(LS_KEY, JSON.stringify({
         hotkey: S.hotkey, delayMs: S.delayMs, stopSec: S.stopSec, gapMs: S.gapMs,
         anchor: S.anchor, leadMs: S.leadMs, method: S.method, thresh: S.thresh,
-        syncComp: S.syncComp, autoRearm: S.autoRearm, failClick: S.failClick,
+        syncComp: S.syncComp, autoRearm: S.autoRearm,
       }));
     } catch (e) {}
   }
@@ -425,11 +423,12 @@
       #dk5sr-root{position:fixed;top:120px;right:16px;z-index:2147483646;direction:rtl;
         font-family:Vazirmatn,'Segoe UI',Tahoma,sans-serif;font-size:12px;color:#e8eaf0;
         background:#141822;border:1px solid #2b3344;border-radius:12px;width:252px;
-        box-shadow:0 10px 34px rgba(0,0,0,.4);user-select:none;line-height:1.7}
+        box-shadow:0 10px 34px rgba(0,0,0,.4);user-select:none;line-height:1.7;
+        display:flex;flex-direction:column;max-height:${PANEL_MAXH}px}
       #dk5sr-root *{box-sizing:border-box;margin:0;padding:0;font-family:inherit}
       #dk5sr-root input{user-select:text}
       #dk5sr-root input[type=checkbox]{accent-color:#4c8bf5;width:13px;height:13px;flex:none}
-      #dk5sr-head{display:flex;align-items:center;gap:7px;padding:8px 11px;cursor:move;
+      #dk5sr-head{display:flex;align-items:center;gap:7px;padding:8px 11px;cursor:move;flex:none;
         background:#1b2130;border-radius:11px 11px 0 0;border-bottom:1px solid #2b3344}
       #dk5sr-title{font-weight:700;font-size:12.5px;flex:1;color:#fff}
       #dk5sr-dot{width:10px;height:10px;border-radius:50%;background:#5b6373;flex:none;transition:.25s}
@@ -437,15 +436,20 @@
       #dk5sr-dot.run{background:#f1c40f;box-shadow:0 0 9px rgba(241,196,15,.7)}
       #dk5sr-min{background:none;border:0;color:#9aa3b5;cursor:pointer;font-size:15px;padding:2px 7px;border-radius:6px}
       #dk5sr-min:hover{background:#262d3d;color:#fff}
-      #dk5sr-body{padding:10px 11px}
-      #dk5sr-status{font-size:11px;color:#9aa3b5;min-height:16px;margin-bottom:7px}
+      #dk5sr-top{flex:none;padding:9px 11px 6px;border-bottom:1px dashed #232a38}
+      #dk5sr-status{font-size:11px;color:#9aa3b5;min-height:16px;margin-bottom:6px}
       #dk5sr-readout{background:#0d1017;border:1px solid #262d3b;border-radius:9px;padding:7px 8px 5px;text-align:center;margin-bottom:5px}
       #dk5sr-big{font-size:27px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px;direction:ltr}
       #dk5sr-big.run{color:#f1c40f}
       #dk5sr-sub{font-size:10px;color:#7d8798;min-height:13px}
-      #dk5sr-health{font-size:10.5px;text-align:center;margin:5px 0 2px;min-height:14px;color:#7d8798}
+      #dk5sr-health{font-size:10.5px;text-align:center;margin:4px 0 2px;min-height:14px;color:#7d8798}
       #dk5sr-delta{font-size:10.5px;text-align:center;color:#7d8798;min-height:14px;direction:ltr;
-        font-variant-numeric:tabular-nums;margin-bottom:4px}
+        font-variant-numeric:tabular-nums}
+      #dk5sr-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 11px;
+        scrollbar-width:thin;scrollbar-color:#2b3344 transparent}
+      #dk5sr-body::-webkit-scrollbar{width:6px}
+      #dk5sr-body::-webkit-scrollbar-thumb{background:#2b3344;border-radius:3px}
+      #dk5sr-body::-webkit-scrollbar-track{background:transparent}
       #dk5sr-watch{margin:7px 0}
       #dk5sr-watchbtn{display:block;width:100%;padding:7px;background:#1f2740;border:1px solid #33406b;color:#bcd0ff;border-radius:9px;cursor:pointer;font-size:11.5px;font-weight:700}
       #dk5sr-watchbtn:hover{background:#26304f}
@@ -464,22 +468,25 @@
       #dk5sr-total{font-size:10px;color:#68718a;text-align:center;margin:3px 0 7px}
       #dk5sr-testhint{font-size:10px;color:#7d8798;text-align:center;margin:2px 0 7px}
       #dk5sr-testhint b{color:#a9b6cf}
+      #dk5sr-log{margin-top:6px;background:#0d1017;border:1px solid #262d3b;border-radius:8px;padding:5px 8px;font-size:10px;color:#8f99ab;max-height:110px;overflow-y:auto;scrollbar-width:thin}
+      #dk5sr-log div{border-bottom:1px dashed #232a38;padding:3px 0;word-break:break-word}
+      #dk5sr-help{margin-top:7px;font-size:10px;color:#5f6880;line-height:1.8;border-top:1px dashed #262d3b;padding-top:7px}
+      #dk5sr-foot{flex:none;padding:7px 11px 9px;border-top:1px dashed #232a38}
       #dk5sr-reset{display:block;width:100%;padding:8px;background:#24361f;border:1px solid #3a5c2e;color:#a4e793;border-radius:9px;cursor:pointer;font-size:12.5px;font-weight:700}
       #dk5sr-reset:hover{background:#2c4526}
-      #dk5sr-log{margin-top:9px;background:#0d1017;border:1px solid #262d3b;border-radius:8px;padding:5px 8px;font-size:10px;color:#8f99ab;max-height:128px;overflow-y:auto}
-      #dk5sr-log div{border-bottom:1px dashed #232a38;padding:3px 0;word-break:break-word}
-      #dk5sr-help{margin-top:8px;font-size:10px;color:#5f6880;line-height:1.8;border-top:1px dashed #262d3b;padding-top:7px}
     </style>
     <div id="dk5sr-head">
       <span id="dk5sr-dot"></span>
       <span id="dk5sr-title">⏱ دستیار ۵ ثانیه (v3.2)</span>
       <button id="dk5sr-min" title="جمع‌کردن پنل">–</button>
     </div>
-    <div id="dk5sr-body">
+    <div id="dk5sr-top">
       <div id="dk5sr-status"></div>
       <div id="dk5sr-readout"><div id="dk5sr-big">—</div><div id="dk5sr-sub"></div></div>
       <div id="dk5sr-health">⏱ تایمر: …</div>
       <div id="dk5sr-delta">Δ: —</div>
+    </div>
+    <div id="dk5sr-body">
       <div id="dk5sr-watch">
         <button id="dk5sr-watchbtn">🎥 فعال‌سازی دیده‌بان صفحه</button>
         <div id="dk5sr-watchstat">غیرفعال</div>
@@ -506,14 +513,15 @@
       </div>
       <div class="dk5sr-row"><label>پیش‌ارسال CDP (ms)</label><input id="dk5sr-lead" type="number" step="1" min="-200" max="500"></div>
       <label class="dk5sr-check"><input type="checkbox" id="dk5sr-auto"> آماده‌سازی خودکار برای تلاش بعدی</label>
-      <label class="dk5sr-check"><input type="checkbox" id="dk5sr-failclick"> کلیک اضطراری هنگام شکست همگام‌سازی</label>
       <div id="dk5sr-total"></div>
       <div id="dk5sr-testhint">کلید <b>T</b> = کلیک تستیِ trusted در محل موس</div>
-      <button id="dk5sr-reset">⟳ ریست — آمادهٔ کلید میان‌بر</button>
       <div id="dk5sr-log"></div>
-      <div id="dk5sr-help">موتور v3.2 فقط «تغییرات پیاپی» را به‌عنوان شمارش قبول می‌کند (۵ تغییر در ۴۵۰ms) —
-        انیمیشن idle دیگر تریگر نمی‌زند. اول با 🧪 تست تماشا موتور را بی‌خیال شانس امتحان کن:
-        در حالت idle باید بگوید «الگویی دیده نشد»، با شروع دستی بازی باید ⚡ بزند.</div>
+      <div id="dk5sr-help">موتور فقط «تغییرات پیاپی» را شمارش می‌داند (۵ تغییر در ۴۵۰ms) —
+        انیمیشن idle تریگر نمی‌زند. بقیهٔ تنظیمات با اسکرول همین بخش در دسترس‌اند.
+        شکست همگام‌سازی = لغو بدون هیچ کلیکی (بدون اتلاف شانس).</div>
+    </div>
+    <div id="dk5sr-foot">
+      <button id="dk5sr-reset">⟳ ریست — آمادهٔ کلید میان‌بر</button>
     </div>`;
     (document.body || document.documentElement).appendChild(root);
 
@@ -528,7 +536,7 @@
       key: q('#dk5sr-key'), method: q('#dk5sr-method'), thresh: q('#dk5sr-thresh'), comp: q('#dk5sr-comp'),
       delay: q('#dk5sr-delay'), stop: q('#dk5sr-stop'),
       gap: q('#dk5sr-gap'), anchor: q('#dk5sr-anchor'), lead: q('#dk5sr-lead'),
-      auto: q('#dk5sr-auto'), failclick: q('#dk5sr-failclick'),
+      auto: q('#dk5sr-auto'),
       total: q('#dk5sr-total'), reset: q('#dk5sr-reset'), log: q('#dk5sr-log'),
     };
 
@@ -542,7 +550,6 @@
     S.ui.anchor.value = S.anchor;
     S.ui.lead.value = String(S.leadMs);
     S.ui.auto.checked = S.autoRearm;
-    S.ui.failclick.checked = S.failClick;
 
     S.ui.key.addEventListener('keydown', (e) => {
       e.preventDefault(); e.stopPropagation();
@@ -581,7 +588,6 @@
     });
     S.ui.anchor.addEventListener('change', () => { S.anchor = S.ui.anchor.value; saveSettings(); updateTotal(); });
     S.ui.auto.addEventListener('change', () => { S.autoRearm = S.ui.auto.checked; saveSettings(); });
-    S.ui.failclick.addEventListener('change', () => { S.failClick = S.ui.failclick.checked; saveSettings(); });
 
     S.ui.watchbtn.addEventListener('click', toggleWatcher);
     S.ui.watchtest.addEventListener('click', startWatchTest);
@@ -594,9 +600,16 @@
 
     S.ui.min.addEventListener('click', (e) => {
       e.stopPropagation();
-      const hidden = S.ui.body.style.display === 'none';
-      S.ui.body.style.display = hidden ? '' : 'none';
-      S.ui.min.textContent = hidden ? '–' : '+';
+      const hidden = S.ui.body.style.display === 'none' && S.ui.root.querySelector('#dk5sr-foot').style.display === 'none';
+      if (hidden) {
+        S.ui.body.style.display = '';
+        S.ui.root.querySelector('#dk5sr-foot').style.display = '';
+        S.ui.min.textContent = '–';
+      } else {
+        S.ui.body.style.display = 'none';
+        S.ui.root.querySelector('#dk5sr-foot').style.display = 'none';
+        S.ui.min.textContent = '+';
+      }
     });
 
     let drag = null;
@@ -749,19 +762,10 @@
   function onSyncFail(reason) {
     if (S.testing) { S.testing = false; refreshStatus(); pushLog('🧪 تست: ' + reason); return; }
     if (S.phase !== 'running') return;
-
-    if (S.failClick && S.timing) {
-      const estStop = S.timing.t0Date + EST_PAUSE + S.runStopSec * 1000 - S.syncComp - S.leadMs
-                    - (S.anchor === 'release' ? S.gapMs : 0);
-      pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — کلیک اضطراری با حدسِ ' + EST_PAUSE + 'ms مکث');
-      send({ type: 'dk5sr-arm-stop', stopAtEpoch: estStop });
-      [180, 60].forEach((b) => setTimeout(pushCoords, Math.max(0, estStop - b - Date.now())));
-    } else {
-      pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — اجرا لغو شد؛ هیچ کلیکی زده نشد (بدون اتلاف شانس).');
-      send({ type: 'dk5sr-cancel' });
-      S.phase = 'armed'; S.syncRunning = false; refreshStatus();
-      S.ui.big.textContent = '—'; S.ui.sub.textContent = '';
-    }
+    pushLog('⚠ همگام‌سازی ناموفق (' + reason + ') — اجرا لغو شد؛ هیچ کلیکی زده نشد (بدون اتلاف شانس).');
+    send({ type: 'dk5sr-cancel' });
+    S.phase = 'armed'; S.syncRunning = false; refreshStatus();
+    S.ui.big.textContent = '—'; S.ui.sub.textContent = '';
   }
 
   /* ---------- 🧪 تست تماشا (بدون کلیک) ---------- */
@@ -1038,7 +1042,7 @@
       buildPanel();
       refreshStatus();
       updateTotal();
-      pushLog('نسخهٔ ۳.۲ فعال شد ✔ (موتور burst: تغییرات پیاپی). اول «🧪 تست تماشا» را امتحان کن.');
+      pushLog('نسخهٔ ۳.۲.۱ فعال شد ✔ (منطق ۳.۲ + پنل جمع‌وجور). تنظیمات قبلی‌ات حفظ شده است.');
     }
     if (S.active && S.bootstrapped && !WATCH.active && Date.now() - S.lastHealth > 3000) {
       S.lastHealth = Date.now();
