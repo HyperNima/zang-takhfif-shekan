@@ -1,9 +1,11 @@
 # 🔔 زنگ تخفیف شکن | Discount Bell Breaker
 
-> **فا:** یک افزونهٔ کروم که برای شکست دادن بازی «زنگ تخفیف» دیجی‌کالا، کلیک‌هایش را از خودِ کروم قرض می‌گیرد.  
-> **EN:** A Chrome extension that borrows its clicks from Chrome itself — because the game refuses to believe anything else.
+> **فا:** یک افزونهٔ کروم که برای شکست دادن بازی «زنگ تخفیف» دیجی‌کالا، کلیک‌هایش را از خودِ کروم قرض می‌گیرد و شروعِ شمارش را با تماشای پیکسل‌های تایمر تشخیص می‌دهد.
+> **EN:** A Chrome extension that borrows its clicks from Chrome itself — and knows when the countdown *truly* starts by watching the timer's own pixels.
 
 🇮🇷 [فارسی](#-فارسی) | 🇬🇧 [English](#-english)
+
+📌 **نسخهٔ فعلی: `3.2.1`** — موتور Burst + پنل جمع‌وجور
 
 <!-- 
 Screenshot
@@ -19,15 +21,16 @@ Screenshot
 
 ساده به نظر می‌رسد؟ پنجرهٔ برد اگر خوش‌بین باشیم **۱۰ میلی‌ثانیه** است، در حالی که واکنش معمول یک آدم حدود ۲۰۰ میلی‌ثانیه طول می‌کشد. یعنی شما عملاً دارید بخت‌آزمایی می‌کنید، نه بازی. بعد از چند روز که همهٔ شانس‌هایم را در دورریز گذاشتم، به‌جای تسلیم، تصمیم گرفتم مهندسی را با مهندسی جواب بدهم. این مخزن، گزارشِ همان زورآزمایی است — و ابزارش.
 
-### گیم چطور ساخته شده بود؟
+### بازی چطور ساخته شده بود؟
 
 رفتم زیر کاپوت و چیزی که پیدا کردم جدی بود:
 
 * **معماری:** `Next.js`/`React` برای صفحه + کامپوننت‌های **Lit** با **Shadow DOM** برای بخش‌های محصورشده. DOM صفحه مثل پیاز است.
 * **کلاس‌های هش‌شده:** `styles-module-scss-module__fWtvNG__button` — اسم کلاس‌ها با هر بیلد عوض می‌شوند؛ نوشتن سلکتور ثابت عملاً بی‌فایده است.
 * **فیلتر رویدادهای جعلی:** رویدادهای `dispatchEvent`-شده (با `isTrusted=false`) توسط هندلرهای بازی نادیده گرفته می‌شوند. اسکریپت Tampermonkey من روی هر چیزی در صفحه کلیک می‌کرد — هر چیزی جز خودِ دکمهٔ شروع.
+* **تایمرِ Canvas:** شمارندهٔ بازی اصلاً متن DOM نیست؛ یک `<canvas class="…__digits" width="424" height="83">` است که ارقام روی آن *نقاشی* می‌شوند. نه متنی برای خواندن دارد، نه رویدادی برای شنیدن.
 * **منطق ناهم‌متقارن کلیک:** شمارش با **رهاکردنِ** دکمهٔ شروع راه می‌افتد (بعد از انیمیشن زنگ) ولی توقف با **فشردن** ثبت می‌شود. یعنی «کِی کلیک می‌کنی» به‌اندازهٔ «چقدر نگهش می‌داری» مهم است.
-* **تأخیر شروع متغیر:** شمارندهٔ بازی واقعاً حدود ۹۰ تا ۲۵۰ میلی‌ثانیه بعد از کلیکِ شروع روشن می‌شود — و این عدد بین اجراها ثابت نمی‌ماند.
+* **مکث شروعِ تصادفی:** شمارندهٔ بازی واقعاً حدود ۹۰ تا ۲۵۰ میلی‌ثانیه بعد از کلیکِ شروع روشن می‌شود — و این عدد بین اجراها ثابت نمی‌ماند.
 * **تلهٔ اسکرول:** درست بعد از شروع، صفحه خودش کمی بالا می‌اسکرول می‌شود و دکمه جابه‌جا می‌شود. هر ابزاری که با مختصات ثابت کلیک کند، به جای خالی شلیک می‌کند و می‌بازد.
 * **محدودیت سمت سرور:** ۱۰ تلاش در روز که سمت سرور اعتبارسنجی می‌شود. حلقهٔ بی‌نهایتِ brute-force بی‌معناست.
 
@@ -39,113 +42,122 @@ Screenshot
 
 1. شبیه‌سازی توالی کامل رویدادها (از `pointerdown` تا `click`) — بازی بی‌اعتنا بود.
 2. جعل `isTrusted` روی خودِ رویداد با `Object.defineProperty` — کار می‌کند، ولی هیچ تضمینی نیست کدام چکِ native پشت صحنه منتظرت باشد.
-3. صدا زدن مستقیم هندلرهای React از `$__reactProps` — هک قشنگی است، ولی حس‌وحال باخت داد.
+3. صدا زدن مستقیم هندلرهای React از `__reactProps$` — هک قشنگی است، ولی حس‌وحال باخت داد.
 
 **نتیجه:** در دنیای userscript هیچ راهی وجود ندارد که رویدادی «واقعاً» از موس یا کیبورد سیستم متولد شود. باید یک لایه بالاتر می‌رفتم.
 
-### ایدهٔ نهایی: کلیک از سمتِ خودِ کروم
+### ایدهٔ اول: کلیک از سمتِ خودِ کروم
 
 افزونه با دسترسی `chrome.debugger` به تب وصل می‌شود و از طریق پروتکل CDP دستور `Input.dispatchMouseEvent` می‌فرستد. این رویدادها از **پایپ‌لاین ورودی خودِ کروم** تزریق می‌شوند: هیت‌تست را خود مرورگر انجام می‌دهد، Shadow DOM و iframe را خودش حل می‌کند، و `isTrusted === true` است — واقعاً، نه جعلی. از دید بازی، این همان کلیک دستِ توست.
 
+### 🕵️ ماجرای دوم: شمارش دقیقاً کِی شروع می‌شود؟
+
+کلیک‌ها حل شده بودند، اما یک دشمن نرم‌تر مانده بود: **مکث تصادفی شروع**. هر «تأخیر» ثابتی که تنظیم می‌کردی دیر یا زود می‌شکست؛ چون در حالتِ باز (open-loop) داری یک متغیر تصادفی را با یک عدد ثابت شکار می‌کنی.
+
+**تلاش اول — تماشای صفحه (Screen Capture):** تصویر زندهٔ خودِ تب را می‌گرفتیم و ناحیهٔ تایمر را مقایسهٔ پیکسلی می‌کردیم. کار می‌کرد، اما دو دام داشت: نگاشتِ مختصات ویدیو↔صفحه در زوم/DPRهای مختلف خطا می‌داد، و چون «کل صفحه» دیده می‌شد، حتی چراغ کوچکِ وضعیتِ پنلِ خودِ افزونه هم می‌توانست شمارش را «شروع‌شده» جا بزند! نتیجه: تریگرهای کاذب روی صفحهٔ خالی.
+
+**تلاش دوم — کشف بزرگ:** چون content script با صفحه هم‌مبدأ است، می‌تواند bitmap خودِ آن canvas تایمر را **مستقیم** بخواند (`drawImage` → `getImageData`). یعنی: بدون دیالوگ Share، بدون نگاشت مختصات، و کاملاً مصون از اسکرول، پنل و هر اتفاقِ اطراف. فقط پیکسل‌های خودِ تایمر را می‌بینیم.
+
+**تلاش سوم — دامِ انیمیشن:** تایمر حتی وقتی روی `00:00` ثابت است، مدام دوباره رندر می‌شود (پالس/درخشش ظریف تم تخته‌سیاهی). مقایسهٔ فریم‌ها با یک «پایهٔ ثابت» به‌مرور از آستانه رد می‌شد و تریگر کاذب می‌زد — حتی وقتی بازی اصلاً شروع نشده بود.
+
+**راه‌حل نهایی — موتور Burst:** دو تغییر در منطق:
+
+1. مقایسهٔ **فریم‌به‌فریم** (نه با پایهٔ ثابت): شمارش واقعی یعنی هر فریم با فریمِ قبلش متفاوت است؛ درخششِ آرامِ حالت سکون تقریباً هیچ فریم‌به‌فریمی ندارد.
+2. **الگوی نرخ:** شمارش فقط وقتی پذیرفته می‌شود که حداقل **۵ تغییرِ پیاپی در پنجرهٔ ۴۵۰ms** ببینیم — امضای تیکِ صدم‌ثانیه‌ها. یک چشمک یا درخشش نمی‌تواند این الگو را جعل کند.
+
+ضمناً فقط **۳۸٪ آخر canvas** (رقم صدم‌ثانیه — سریع‌ترین بخش در شمارش) تحت نظر است؛ چشمکِ دونقطه بیرونِ ناحیه است.
+
+**نتیجه:** تریگر دقیقاً روی اولین تکانِ واقعی تایمر می‌نشیند، مکث تصادفی شروع از معادله حذف می‌شود، و اگر تشخیص شکست بخورد، اجرا **بدون هیچ کلیک نهایی** لغو می‌شود — یعنی هیچ شانسی برای شلیک کور هدر نمی‌رود.
+
 ### معماری
-
 ```text
-zang-takhfif-shekan/
-├── manifest.json    ← MV3؛ فقط یک مجوز: debugger
-├── background.js    ← موتور کلیک CDP + زمان‌بند میلی‌ثانیه‌ای
-└── content.js       ← پنل، میان‌برها، ردیابی دکمه، کالیبراسیون
+    zang-takhfif-shekan/
+    ├── manifest.json    ← MV3؛ فقط یک مجوز: debugger
+    ├── background.js    ← موتور کلیک CDP + زمان‌بند میلی‌ثانیه‌ای
+    └── content.js       ← پنل، موتور Burst (خواندن canvas)، ردیابی دکمه، کالیبراسیون
 ```
-### ⚙️ جریان کار به این شکل است
+### ⚙️ جریان کار
 
-* موس را روی دکمهٔ «شروع زنگ» می‌گذارید و کلید `K` را می‌زنید.
-* اسکریپت `content` مختصات و تنظیمات را به `service worker` ارسال می‌کند.
-* در پس‌زمینه، `worker` دیباگر را متصل کرده، رویداد `press` شروع را همان‌جا و رویداد `release` را پس از گذشت «فاصلهٔ انسانی» تزریق می‌کند.
-* هم‌زمان `content script` دکمه را **به‌صورت زنده ردیابی می‌کند** (هر ۲۵۰ میلی‌ثانیه + دو بار دقیقاً قبل از توقف). اگر صفحه اسکرول خورده باشد، مختصات تازه ارسال می‌شود؛ دقیقاً مثل دستِ انسانی که دکمه را دنبال می‌کند.
-* در لحظهٔ هدف، `worker` با دقت میلی‌ثانیه‌ای رویدادهای `press` و `release` توقف را روی مختصات نهایی تزریق می‌کند.
-* در پایان اجرا، لاگ‌ها به شما نشان می‌دهند که بازی چه عددی را ثبت کرده است و برای دفعات بعد، «زمان توقف» را باید روی چه عددی تنظیم کنید.
+* موس را روی صفحه ی خالی آورده و با تنظیم زبان انگلیسی کیبرد، کلید `T` کیبرد را میزنید تا `CDP` کروم فعال شود، **مطمئن شوید هر مرتبه که قصد شروع بازی را دارید ثانیه شمار بازی حتما 00:00 را نشان بدهد**، سپس موس را روی دکمهٔ «شروع زنگ» را می‌گذارید و کلید `K` را می‌زنید.
+* `content script` سلامت canvas تایمر را بررسی و مختصات و تنظیمات را به `service worker` می‌فرستد.
+* `worker` دیباگر را متصل کرده، رویداد `press` شروع را همان‌جا و رویداد `release` را پس از «فاصلهٔ انسانی» تزریق می‌کند.
+* هم‌زمان موتور Burst شروع به تماشای bitmap تایمر می‌کند: مقایسهٔ فریم‌به‌فریمِ ناحیهٔ رقم صدم‌ثانیه.
+* مکث تصادفی بازی تمام می‌شود، ارقام شروع به تکان می‌کنند و با ۵ تغییر پیاپی در ۴۵۰ms، تریگر تأیید می‌شود — دقیقاً روی اولین حرکت واقعی.
+* `تریگر + زمان توقف − جبران − پیش‌ارسال` به worker ارسال و با زمان‌بند میلی‌ثانیه‌ای (setTimeout + busy-wait) کلیک توقف زمان‌بندی می‌شود.
+* دکمهٔ توقف حین اجرا **به‌صورت زنده ردیابی می‌شود** (هر ۲۵۰ms + دو بار دقیقاً قبل از توقف) تا اسکرول خودکار بازی جبران شود — مثل دستی که دکمه را دنبال می‌کند.
+* در لحظهٔ هدف، `press` و `release` توقف تزریق می‌شود و لاگ‌ها زمان‌بندی داخلی را گزارش می‌کنند.
 
 ### ✨ امکانات
 
-* 🔐 **کلیک‌های ۱۰۰٪ Trusted:** تزریق واقعی رویداد از سطح پایپ‌لاین CDP مرورگر (نه صرفاً شبیه‌سازی جاوااسکریپتی).
-* ⌨️ **کنترل سریع با کیبورد:** کلید `K` برای اجرای کامل توالی خودکار و کلید `T` برای تست کلیک.
-* 🎚 **پنل تنظیمات شناور:** دارای قابلیت ذخیرهٔ خودکار مقادیر تنظیم‌شده.
-* 🎯 **ردیابی پویای دکمه:** پیدا کردن و کلیک روی دکمه حتی زمانی که صفحه بازی اسکرول بخورد.
-* 📊 **مانیتورینگ زنده:** خواندن لحظه‌ای شمارندهٔ بازی (با پشتیبانی کامل از کاراکترهای فارسی مثل «۰۵:۰۰»).
-* 🧪 **کالیبراسیون هوشمند:** اندازه‌گیری لحظهٔ «رسیدن واقعی» رویداد به صفحه و پیشنهاد خودکار مقدار بعدی برای کاهش خطا.
-* ✅ **تاییدیه توقف:** بررسی هوشمند اینکه آیا بازی واقعاً متوقف شد یا کلیکِ تزریق‌شده به هدف نخورده است.
+* 🔐 **کلیک‌های ۱۰۰٪ Trusted:** تزریق واقعی رویداد از سطح پایپ‌لاین CDP مرورگر.
+* ⚡ **موتور Burst:** تشخیص شروعِ واقعیِ شمارش با تماشای bitmap تایمر (فریم‌به‌فریم + الگوی نرخ) — مصون از انیمیشن idle، پنل، اسکرول و چراغ‌های وضعیت.
+* 👁 **خواندن مستقیم Canvas:** بدون Share، بدون OCR، بدون وابستگی خارجی.
+* 🧪 **تست تماشا:** تست کامل موتور تشخیص **بدون هیچ کلیکی** — حتی یک شانس هم مصرف نمی‌شود.
+* 📊 **نمایشگر Δ زنده:** اختلاف پیکسلی فریم‌به‌فریم را با چشم ببینید و آستانه را دقیق تیون کنید.
+* 🩺 **نشانگر سلامت:** تأیید یافتنِ canvas تایمر قبل از اجرا.
+* 🎯 **ردیابی پویای دکمه:** جبران خودکار تلهٔ اسکرول بازی.
+* 🧯 **شکست = لغو، نه شلیک کور:** اگر الگوی شمارش دیده نشود، هیچ کلیک توقفی زده نمی‌شود.
+* 🎚 **پنل جمع‌وجور:** نمایشگر تایمر و دکمهٔ ریست همیشه ثابت؛ تنظیمات با اسکرول در دسترس. ذخیرهٔ خودکار تنظیمات در `localStorage`.
+* ⌨️ **کنترل سریع با کیبورد:** کلید `K` اجرا، کلید `T` کلیک تستی.
+* 🔀 **سه روش همگام‌سازی:** canvas مستقیم (پیشنهادی) / پیکسل + اشتراک صفحه (پشتیبان) / خاموش (تأخیر ثابت).
 
 ### 🎚 جدول کامل تنظیمات
 *(بر اساس کنترل‌های موجود در پنل افزونه)*
 
 | کنترل در پنل | پیش‌فرض | عملکرد | مثال / توصیه |
 | :--- | :---: | :--- | :--- |
-| **کلید میان‌بر** | `K` | کلید اجرای کل توالی (شروع، شمارش، توقف). با کلیک روی کادر و فشردن کلید جدید، تغییر می‌کند. | `K` |
-| **تأخیر بعد از کلیک شروع** (ms) | `80` | فاصلهٔ زمانی کلیک «شروع» تا شروع شمارش داخلی ربات (جبرانِ تأخیرِ خودِ بازی). | **برابر «فاصلهٔ انسانی» بگذارید** (مثلاً `90`) |
-| **زمان توقف / آفست** (ثانیه) | `5.00` | مدت شمارش داخلی تا لحظهٔ شلیک کلیکِ توقف — **پیچ اصلی کالیبراسیون**. | از `5.01` شروع کنید و بعد، مقدار پیشنهادی لاگ را جایگزین کنید. |
-| **فاصلهٔ انسانی press→release** (ms)| `90` | هر کلیک چند میلی‌ثانیه نگه‌داشته شود تا شبیه رفتار انسان باشد. | بین `50` تا `90` |
-| **توقف ثبت شود روی** | `فشردن` | مبنای ثبت توقف در بازی: لحظهٔ فشردن (`pointerdown`) یا رهاکردن (`click`). | اگر خطای ثابتی هم‌اندازهٔ «فاصلهٔ انسانی» دیدید، این گزینه را تغییر دهید. |
-| **پیش‌ارسال CDP** (ms) | `0` | ارسالِ زودترِ دستورات برای خنثی‌کردن تأخیرِ تزریقِ خود پروتکل CDP. | عددی که در لاگِ اجرا نمایش داده می‌شود (مثلاً `3`). |
-| ☑️ **آماده‌سازی خودکار** | `خاموش`| پس از پایان اجرا، بدون نیاز به ریست دستی مجدداً منتظر کلید می‌ماند. | برای زدنِ سریعِ شانس‌های روزانه روشن کنید. |
+| **روش همگام‌سازی شروع** | `canvas` | نحوهٔ تشخیص شروع شمارش: خواندن مستقیم bitmap تایمر / پیکسل + اشتراک صفحه / خاموش (تأخیر ثابت). | `canvas` |
+| **آستانهٔ Δ تشخیص حرکت** | `8` | حداقل اختلاف پیکسلیِ فریم‌به‌فریم برای ثبت «تغییر». | تریگر کاذب؟ بالاتر (`10`–`15`). تریگر نمی‌دهد؟ پایین‌تر (`4`–`6`). |
+| **جبران تأخیر تریگر** (ms) | `40` | جبران تأخیرِ «دیدنِ» اولین تغییرات — پیچ دوم کالیبراسیون. | هر `0.01s` خطای ثابت ⇐ `+10ms` |
+| **تأخیر بعد از کلیک شروع** (ms) | `80` | فقط در حالت «خاموش» فعال است (در حالت همگام بی‌اثر). | — |
+| **زمان توقف / آفست** (ثانیه) | `5.04` | فاصلهٔ تریگر تا کلیک توقف — **پیچ اصلی کالیبراسیون**. | طبق جدول کالیبراسیون زیر. |
+| **فاصلهٔ انسانی press→release** (ms) | `50` | هر کلیک چند میلی‌ثانیه نگه‌داشته شود تا شبیه رفتار انسان باشد. | بین `50` تا `90` |
+| **توقف ثبت شود روی** | `فشردن` | مبنای زمانی کلیک توقف: فشردن (`pointerdown`) یا رهاکردن (`click`). | `فشردن` |
+| **پیش‌ارسال CDP** (ms) | `40` | ارسالِ زودترِ دستورات برای خنثی‌کردن تأخیر تزریق پروتکل. | عددی که لاگِ «رسیدن press» نشان می‌دهد. |
+| ☑️ **آماده‌سازی خودکار** | `خاموش` | پس از پایان اجرا، بدون ریست دستی مجدداً منتظر کلید می‌ماند. | برای زدنِ پشت‌سرهمِ شانس‌های روزانه. |
 
 #### 🕹 کنترل‌های اجرا
 
 | کلید / دکمه | عملکرد |
 | :--- | :--- |
-| **کلید `K`** | اجرای کامل: **کلیک شروع ⬅️ تأخیر ⬅️ شمارش معکوس ⬅️ کلیک توقف** |
-| **کلید `T`** | یک کلیک تستیِ Trusted در محل فعلیِ موس (جهت اطمینان از سلامت موتور کلیک). |
-| **دکمهٔ «⟳ ریست»** | لغو توالیِ در حال اجرا و آماده‌سازی ربات برای اجرای بعدی. |
-| **دکمهٔ `–` / درگ هدر** | جابه‌جایی پنل در صفحه یا جمع‌کردن (مینی‌مایز) آن. |
+| **کلید `K`** | اجرای کامل: **کلیک شروع ⬅️ تماشای تایمر ⬅️ تریگر ⬅️ کلیک توقف** |
+| **کلید `T`** | یک کلیک تستیِ Trusted در محل فعلیِ موس (سلامت موتور کلیک). |
+| **دکمهٔ 🧪 «تست تماشا»** | ۱۲ ثانیه تماشای بدون کلیک: بازی را دستی شروع کنید و سلامت موتور تشخیص را ببینید — بدون مصرف شانس. |
+| **دکمهٔ 🎥 دیده‌بان** | فقط روش «پیکسل»: فعال/غیرفعال‌سازی اشتراک صفحه + کالیبراسیون خودکار با مارکر. |
+| **دکمهٔ «⟳ ریست»** | لغو توالی در حال اجرا و آماده‌سازی مجدد (همیشه در پایینِ ثابت پنل). |
+| **دکمهٔ `–` / درگ هدر** | جمع‌کردن بدنهٔ پنل (نمایشگر بالای پنل سر جایش می‌ماند) یا جابه‌جایی پنل. |
 
-> 💡 **فرمول ذهنی محاسبه زمان:**  
-> عددی که بازی در لحظهٔ توقف نشان می‌دهد ≈ `(تأخیر − فاصلهٔ انسانی) + زمان‌توقف × ۱۰۰۰ − پیش‌ارسال + جیترِ خودِ بازی`
+> 💡 **مدل ذهنی زمان:**
+> عددی که بازی در لحظهٔ توقف نشان می‌دهد ≈ `زمان توقف − جبران تریگر + λ`
+> که λ همان تأخیرِ کوانتیزه‌شدهٔ «دیدن» است (چند ده میلی‌ثانیه، وابسته به فریم رندر). عملاً: هر `0.01` ثانیه خطا ⇐ `10ms` تنظیم در «زمان توقف» یا «جبران تریگر».
 
 ### 🚀 نصب
 
 ۱. این مخزن را Clone یا دانلود کنید:
-
 ```bash
-git clone https://github.com/HyperNima/zang-takhfif-shekan.git
+    git clone https://github.com/HyperNima/zang-takhfif-shekan.git
 ```
-۲. مرورگر را باز کرده، به آدرس `chrome://extensions` بروید و از گوشهٔ بالا سمت راست، **Developer mode** را فعال کنید.  
-۳. روی دکمهٔ **Load unpacked** کلیک کرده و پوشهٔ `zang-takhfif-shekan` را انتخاب کنید.  
+
+۲. مرورگر را باز کرده، به آدرس `chrome://extensions` بروید و از گوشهٔ بالا سمت راست، **Developer mode** را فعال کنید.
+۳. روی دکمهٔ **Load unpacked** کلیک کرده و پوشهٔ `zang-takhfif-shekan` را انتخاب کنید.
 ۴. صفحهٔ بازی را باز کنید؛ پنل شناور **«⏱ دستیار ۵ ثانیه»** در کنار صفحه ظاهر می‌شود.
 
 ---
 
-### 🎯 راهنمای استفاده و کالیبراسیون (قانون طلایی)
+### 🎯 راهنمای استفاده
 
-> ⚠️ **اصل اساسی:** ملاک کالیبراسیون، **تنها عددی است که خودِ بازی ثبت می‌کند** (نه زمان روی پنل و نه حدس ذهنی).
-
-| عدد ثبت‌شده در بازی | اقدام اصلاحی |
-| :--- | :--- |
-| **`05:00` (همراه با برد)** | 🎉 موفقیت‌آمیز! تنظیمات دقیق است؛ کد تخفیف را دریافت کنید. |
-| **`05:00` (بدون برد)** | «زمان توقف» را دقیقاً در مرکز پنجرهٔ شانس قرار دهید (مثلاً `5.005`). |
-| **`04:99`** | مقدار «زمان توقف» را به میزان `+0.01` ثانیه افزایش دهید. |
-| **`05:01`** | مقدار «زمان توقف» را به میزان `-0.01` ثانیه کاهش دهید. |
-| **نوسان بین دو عدد** | از مقادیر اعشاری سه‌رقمی استفاده کنید (مانند `5.005`). |
-
-> 💡 **نکته:** پس از هر اجرا، بخش لاگ افزونه عدد پیشنهادی برای دور بعدی را به‌صورت خودکار محاسبه می‌کند؛ کافی است همان را کپی و اعمال کنید.
-
-#### 📌 نکات کلیدی کالیبراسیون
-* **تفاوت زمان پنل با بازی:** در صورت تنظیم گزینهٔ «توقف ثبت شود روی = رهاکردن»، زمان نمایش داده‌شده روی پنل همواره برابر با `زمان توقف − فاصلهٔ انسانی` خواهد بود. این تفاوت رفتار طبیعی سیستم است و مبنا سنجش بازی خواهد بود.
-* **هم‌ترازی زمان‌بندی:** از آنجا که شمارش بازی با *رهاسازی* دکمه آغاز می‌شود، پارامتر «تأخیر» را دقیقاً برابر با «فاصلهٔ انسانی» قرار دهید تا تایمر داخلی افزونه با بازی هم‌گام شود.
-* **عدم رفرش در حین کالیبراسیون:** بین تلاش‌های متوالی جهت کالیبره‌سازی، صفحه را Refresh نکنید؛ زیرا نقطهٔ شروع شمارش بازی (Jitter) تغییر می‌کند.
-
----
-
-### 📝 یادداشت‌های میدانی (تجربیات فنی)
-
-* 🛑 **نوار دیباگ کروم:** پیام بالای مرورگر مبنی بر `"Extension started debugging this browser"` طبیعی است. آن را Cancel نکنید؛ پس از اتمام عملیات خودکار بسته می‌شود.
-* 🛑 **تداخل DevTools:** ابزار DevTools (Inspect) نباید روی همان تب باز باشد؛ پروتکل CDP اجازهٔ اتصال هم‌زمان دو دیباگر به یک تب را نمی‌دهد.
-* 🛑 **تنظیمات نمایش:** میزان Zoom پیج روی `100%` باشد. در حین اجرا از اسکرول نکنید. زبان کیبرد روی انگلیسی باشد!!
-* 🛑 **تداخل اسکریپت‌ها:** در صورت فعال بودن اسکریپت‌های مشابه در Tampermonkey، آن‌ها را غیرفعال کنید تا از اجرای هم‌زمان روی کلید `K` جلوگیری شود.
+* **فعال کردن افزوله قبل استارت بازی:** ابتدا کلید `T` وقتی موس در فضای خالی است زده شود تا `CDP` فعال شود، همیشه ثانیه شمار بازی روی 00:00 باشد قبل از انکه موس را روی شروع بازی برده و کلید `K` را بزنید.
+* **نوار دیباگ کروم:** پیام بالای مرورگر مبنی بر `"Extension started debugging this browser"` طبیعی است. آن را Cancel نکنید؛ پس از اتمام عملیات خودکار بسته می‌شود.
+* **تداخل DevTools:** ابزار DevTools (Inspect) نباید روی همان تب باز باشد؛ پروتکل CDP اجازهٔ اتصال هم‌زمان دو دیباگر به یک تب را نمی‌دهد.
+* **تنظیمات نمایش:** میزان Zoom پیج روی `100%` باشد. در حین اجرا اسکرول نکنید. زبان کیبورد روی انگلیسی باشد!
+* 🩺 **اگر تریگر نشد:** اگر لاگ گفت «الگوی شمارش دیده نشد»، یعنی بازی شروع نشده یا آستانه نامناسب است — با 🧪 عیب‌یابی کنید و «آستانهٔ Δ» را تنظیم کنید. اجرا خودکار بدون کلیک لغو شده است.
 
 ---
 
 ### ⚖️ محدودیت‌ها و سلب مسئولیت
 
 * این افزونه تعداد شانس‌های روزانه را افزایش نداده و منطق سمت سرور را تغییر نمی‌دهد؛ بلکه تنها پنجرهٔ زمانی ۱۰ میلی‌ثانیه‌ای را از خطای انسانی خارج کرده و به دقت اتوماسیون می‌سپارد.
-* به دلیل وجود نوسان تصادفی (Jitter) در زمان شروع شمارش بازی، ممکن است پس از هر بار بارگذاری مجدد صفحه، نیاز به ۱ یا ۲ بار کالیبراسیون مجدد باشد.
+* موتور Burst مکث تصادفی شروع را حذف می‌کند، اما **کوانتیزاسیون فریم رندر** (~۱۷ms) و نوسان تأخیر دیدن باقی می‌ماند؛ به همین دلیل عدد بازی ممکن است گاهی بین دو مقدار مجاور بپرد — راه‌حل، هدف‌گیری وسط پنجره است.
 * **Disclaimer:** این پروژه صرفاً یک نمونهٔ پژوهشی در زمینهٔ مهندسی معکوس و اتوماسیون مرورگر (Browser Automation) بوده و جهت اهداف آموزشی منتشر شده است. مسئولیت رعایت قوانین پلتفرم هدف بر عهدهٔ استفاده‌کننده است.
 
 ---
@@ -164,78 +176,96 @@ Sounds easy? Your winning window is roughly **10 milliseconds**, whereas average
 
 ## 🔍 Engineering Breakdown: How the Opponent Was Built
 
-Inspecting the underlying implementation revealed several non-trivial frontend safeguards:
-
 * **Architecture:** A `Next.js`/`React` single-page application integrating **Lit** web components with **Shadow DOM** encapsulation.
 * **Hashed Class Names:** SCSS modules generate dynamic classes (e.g., `styles-module-scss-module__fWtvNG__button`) that rotate with builds, rendering static selectors useless.
 * **Synthetic Event Filtering:** Scripted events (`isTrusted = false`) are intercepted and ignored by internal React synthetic event listeners. Standard userscripts happily click elements, but fail to trigger actual game logic.
-* **Asymmetric Click Semantics:** The game timer starts on button **release** (`pointerup`/`mouseup` after the bell animation) but registers the stop on **press** (`pointerdown`). *When* you click matters as much as *how long* you hold it.
-* **Variable Startup Lag:** The counter actually initiates ~90–250ms *after* the start click — a value that dynamically drifts between executions.
+* **Canvas Timer:** The game's countdown is *not* DOM text at all — it's a `<canvas class="…__digits" width="424" height="83">` where the digits are **painted**. There is no text to read and no event to listen to.
+* **Asymmetric Click Semantics:** The timer starts on button **release** (after the bell animation) but registers the stop on **press** (`pointerdown`). *When* you click matters as much as *how long* you hold it.
+* **Random Startup Pause:** The counter actually initiates ~90–250ms *after* the start click — a value that drifts between executions.
 * **The Scroll Trap:** Immediately after initiation, the page auto-scrolls, physically moving the button element. Fixed-coordinate automation shoots into empty space.
 * **Server-Side Validation:** Attempt limits (10/day) are enforced server-side, making naive brute-force loops completely ineffective.
 
-> 💡 **Key Insight:** Initial inspection hinted that the button resided deep within a Shadow DOM tree. However, DOM dumps revealed a standard React `<button>` in the light DOM. The actual protection layer wasn't encapsulation — it was **Event Authenticity**.
+> 💡 **Key Insight:** Initial inspection hinted that the button resided deep within a Shadow DOM tree. DOM dumps revealed a standard React `<button>` in the light DOM. The actual protection layer wasn't encapsulation — it was **Event Authenticity**.
 
 ---
 
 ## 🛑 Why Userscripts (Tampermonkey) Failed
 
-Evaluating DOM-level workarounds:
+1. **Full Synthetic Event Dispatching:** Sequence chains (`pointerdown` → `mousedown` → `mouseup` → `click`) were ignored by internal React handlers.
+2. **Property Spoofing:** Redefining `isTrusted` via `Object.defineProperty` bypasses superficial checks, but fails against browser-native validation deeper in the pipeline.
+3. **React Fiber Hooking:** Calling internal handlers directly via `__reactProps$` worked, but bypassed the native interaction lifecycle entirely.
 
-1. **Full Synthetic Event Dispatching:** Dispatching sequence chains (`pointerdown` → `mousedown` → `mouseup` → `click`) were ignored by internal React event handlers.
-2. **Property Spoofing:** Redefining `isTrusted` via `Object.defineProperty` bypasses superficial checks, but fails against browser-native event validation deeper in the pipeline.
-3. **React Fiber Hooking:** Accessing internal handlers directly via `__reactProps$` properties worked, but bypassed the native browser interaction lifecycle entirely.
-
-**Conclusion:** Userscripts operating strictly within the DOM context cannot generate genuine hardware-level events. Interacting with the game required moving one abstraction layer up: **The Browser Debugging Protocol.**
+**Conclusion:** Userscripts operating strictly within the DOM cannot generate genuine hardware-level events. The game required moving one abstraction layer up: **The Browser Debugging Protocol.**
 
 ---
 
-## ⚡ The Solution: Chrome DevTools Protocol (CDP)
+## ⚡ Solution #1: Chrome DevTools Protocol (CDP)
 
-The extension leverages the `chrome.debugger` API to attach directly to the target tab and dispatch low-level input commands via the **Chrome DevTools Protocol (CDP)** using `Input.dispatchMouseEvent`:
+The extension leverages the `chrome.debugger` API to attach to the target tab and dispatch low-level input commands via **CDP**:
 
 ```javascript
-chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-  type: 'mousePressed',
-  x,
-  y,
-  button: 'left',
-  buttons: 1,
-  clickCount: 1,
-});
+    chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x,
+      y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    });
 ```
+
 These events are injected through **Chrome's own input pipeline**: the browser does the hit-testing, resolves Shadow DOM and iframes natively, and generates events where `isTrusted === true` — making them indistinguishable from hardware input.
+
+---
+
+## 🕵️ The Second Mystery: When Does Counting *Actually* Begin?
+
+With clicks solved, a subtler enemy remained: the **random startup pause**. Any fixed "delay" eventually broke — in open-loop mode you're hunting a random variable with a constant.
+
+* **Attempt 1 — Screen Capture:** Live tab capture + pixel-diff of the timer region. It worked, but video↔page coordinate mapping drifted with zoom/DPR, and since the *entire page* was visible, even the extension panel's tiny status lamp could falsely "start" the countdown.
+* **Attempt 2 — The Big Discovery:** Being same-origin, a content script can read the timer canvas's bitmap **directly** (`drawImage` → `getImageData`). No Share dialog, no coordinate mapping, immune to scrolling and everything happening around it. Only the timer's own pixels are watched.
+* **Attempt 3 — The Animation Trap:** The timer repaints constantly even while frozen at `00:00` (a subtle blackboard-theme pulse). Diffing against a static baseline eventually crossed the threshold and fired false triggers.
+* **Final Solution — The Burst Engine:** Two logical changes: **(1) frame-to-frame comparison** (real counting means every frame differs from the previous one; idle shimmer barely changes frame-to-frame), and **(2) a rate pattern**: counting is only confirmed after **5 consecutive changes within a 450ms window** — the signature of hundredth-ticks. A blink cannot fake that. Only the **last 38% of the canvas** (the hundredths digit — the fastest-changing zone) is watched; the blinking colon is outside the region.
+
+**Result:** the trigger lands precisely on the timer's first real tick, the random startup pause is eliminated from the equation, and if detection ever fails, the run is **cancelled without any stop click** — no attempt wasted on a blind shot.
 
 ---
 
 ## 🏗 Architecture
 
 ```text
-zang-takhfif-shekan/
-├── manifest.json    ← Manifest V3 (requires single permission: "debugger")
-├── background.js    ← CDP click execution engine + millisecond scheduler
-└── content.js       ← Control panel, hotkeys, button tracking, calibration
+    zang-takhfif-shekan/
+    ├── manifest.json    ← Manifest V3 (requires single permission: "debugger")
+    ├── background.js    ← CDP click engine + millisecond scheduler
+    └── content.js       ← Control panel, Burst engine (canvas reading), button tracking, calibration
 ```
+
 ### 🔄 Execution Flow
 
-1. **Targeting:** Hover over the "Start" button and press `K`.
-2. **Handoff:** The content script captures cursor coordinates and parameters, forwarding them to the background Service Worker.
-3. **Initiation:** The Service Worker attaches the debugger, immediately dispatching a native `mousePressed` event followed by `mouseReleased` after the configured "Human Gap".
-4. **Dynamic Tracking:** The content script tracks the button in real time (every 250ms plus twice right before the stop) and ships fresh coordinates if the page scrolls.
-5. **Precision Stop:** At the target millisecond, the worker dispatches the stop `mousePressed` and `mouseReleased` sequence with millisecond precision.
-6. **Telemetry:** Execution logs display precise timing deltas and suggest calibration values for subsequent runs.
+1. **Targeting:** Move the mouse over a blank area of the page, set your keyboard layout to English, and press the `T` key to open Chrome `CDP`. **Make sure that every time you want to start the game, the game timer strictly shows 00:00**. Then, hover the mouse over the 'Start Alarm' button and press the `K` key.
+2. **Handoff:** The content script verifies timer-canvas health, then forwards coordinates and parameters to the background Service Worker.
+3. **Initiation:** The worker attaches the debugger (persistent connection) and dispatches the start `mousePressed` immediately, followed by `mouseReleased` after the configured "Human Gap".
+4. **Surveillance:** The Burst engine watches the timer canvas bitmap: frame-to-frame diffing of the hundredths-digit zone.
+5. **Trigger:** The game's random pause ends, digits start ticking, and 5 consecutive changes within 450ms confirm the trigger — right on the first real movement.
+6. **Precision Scheduling:** `trigger + stop time − compensation − CDP lead` is sent to the worker, which arms the stop click with a millisecond scheduler (`setTimeout` + busy-wait).
+7. **Dynamic Tracking:** The stop button is tracked live (every 250ms plus twice right before the stop) to compensate the game's auto-scroll.
+8. **Stop & Telemetry:** At the target millisecond, the stop press/release is injected; logs report internal timing for your next calibration.
 
 ---
 
 ## ✨ Features
 
-* 🔐 **100% Trusted Clicks:** Input injection via CDP operating at the browser pipeline layer (`isTrusted === true`).
-* ⌨️ **Keyboard Hotkeys:** Press `K` for full sequence execution; press `T` for an isolated test click.
-* 🎚 **Persistent Control Panel:** Floating UI panel with automatic state persistence (`chrome.storage`).
-* 🎯 **Dynamic Layout Tracking:** Real-time element position tracking mitigates UI shifts and page scrolling.
-* 📊 **Live Telemetry:** Parses the game's native timer DOM in real time (supports localized Persian digits: `۰۵:۰۰`).
-* 🧪 **Precision Calibration:** Measures event arrival latency and automatically calculates offset suggestions.
-* ✅ **State Verification:** Verifies whether the game timer successfully halted post-execution.
+* 🔐 **100% Trusted Clicks:** Input injection via CDP at the browser pipeline layer (`isTrusted === true`).
+* ⚡ **Burst Engine:** Detects the *actual* start of counting by watching the timer canvas bitmap (frame-to-frame + rate pattern) — immune to idle animations, the panel, scrolling, and status lamps.
+* 👁 **Direct Canvas Reading:** No screen share, no OCR, no external dependencies.
+* 🧪 **Watch Test:** Full detection-engine test **without a single click** — burns zero attempts.
+* 📊 **Live Δ Meter:** See the frame-to-frame pixel difference in real time and tune the threshold precisely.
+* 🩺 **Health Indicator:** Confirms the timer canvas is found before you run.
+* 🎯 **Dynamic Button Tracking:** Auto-compensates the game's scroll trap.
+* 🧯 **Fail-Safe:** Detection failure = clean cancellation, never a blind stop click.
+* 🎚 **Compact Panel:** Timer display and Reset button always pinned; settings scroll inside. Settings persist via `localStorage`.
+* ⌨️ **Hotkeys:** `K` for a full run, `T` for a trusted test click.
+* 🔀 **Three Sync Methods:** direct canvas (recommended) / pixel + screen share (fallback) / off (fixed delay).
 
 ---
 
@@ -243,25 +273,29 @@ zang-takhfif-shekan/
 
 | Panel Control | Default | Function | Recommended Usage |
 | :--- | :---: | :--- | :--- |
-| **Hotkey** | `K` | Triggers the complete sequence (Start → Delay → Countdown → Stop). Click box to rebind. | `K` |
-| **Start Delay** (ms) | `80` | Delay between start click and internal countdown (compensates for game startup lag). | **Set equal to "Human Gap"** (e.g., `90`), since the game starts counting on release. |
-| **Stop Time / Offset** (s) | `5.00` | Target countdown length before dispatching stop click — **Primary Calibration Control**. | Start at `5.01`, then copy the value suggested in execution logs (`5.005` also valid). |
-| **Human Gap** (ms) | `90` | Press-to-release holding duration (`pointerdown` → `pointerup`) to simulate physical key press. | `50`–`90` ms |
-| **Stop Registers On** | `Press` | Timing anchor for stop click: `Press` (`pointerdown`) or `Release` (`click`). | Default to `Press`; switch if encountering a constant offset error matching this duration. |
-| **CDP Lead** (ms) | `0` | Sends events early to cancel CDP protocol transport latency. | Match the value reported in execution logs (e.g., `3`). |
-| ☑️ **Auto-Rearm** | `Off` | Automatically resets state after execution without manual intervention. | Enable when running consecutive daily attempts. |
+| **Sync Method** | `canvas` | How the counting start is detected: direct timer bitmap / pixel + screen share / off (fixed delay). | `canvas` |
+| **Δ Threshold** | `8` | Minimum frame-to-frame pixel difference to count as a "change". | False triggers? Raise (`10`–`15`). No trigger? Lower (`4`–`6`). |
+| **Trigger Compensation** (ms) | `40` | Absorbs the "seeing" latency of the first changes — the secondary calibration knob. | Every `0.01s` of constant error ⇐ `+10ms` |
+| **Start Delay** (ms) | `80` | Only active in "off" mode (ignored in sync modes). | — |
+| **Stop Time / Offset** (s) | `5.04` | Time from trigger to the stop click — **Primary Calibration Control**. | Follow the calibration table. |
+| **Human Gap** (ms) | `50` | Press-to-release holding duration to simulate a physical click. | `50`–`90` ms |
+| **Stop Registers On** | `Press` | Timing anchor for the stop click: `Press` or `Release`. | `Press` |
+| **CDP Lead** (ms) | `40` | Sends events early to cancel CDP transport latency. | Match the "press arrival" log value. |
+| ☑️ **Auto-Rearm** | `Off` | Automatically re-arms after each run without manual reset. | Enable for consecutive daily attempts. |
 
 ### Runtime Controls
 
 | Action | Execution |
 | :--- | :--- |
-| **Hotkey `K`** | Launches sequence: **Start Click ➔ Delay ➔ Countdown ➔ Stop Click** |
-| **Hotkey `T`** | Dispatches an isolated CDP test click under cursor position (engine health check). |
-| **Button `⟳ Reset`** | Cancels active execution sequences and re-arms listeners. |
-| **Header / `–` Button** | Drags or minimizes the floating interface. |
+| **Hotkey `K`** | Full run: **Start Click ➔ Timer Surveillance ➔ Trigger ➔ Stop Click** |
+| **Hotkey `T`** | Isolated trusted CDP test click under the cursor. |
+| **🧪 Watch Test button** | 12 seconds of click-free watching: start the game manually and verify the detection engine — burns zero attempts. |
+| **🎥 Watcher button** | Pixel mode only: toggles screen share + automatic marker calibration. |
+| **`⟳ Reset` button** | Cancels the active sequence and re-arms (always pinned at the panel's bottom). |
+| **Header / `–` button** | Collapses the panel body (the top display stays visible) or drags the panel. |
 
-> 💡 **Timing Formula:**  
-> `Game Reading at Stop ≈ (Start Delay − Human Gap) + (Stop Time × 1000) − CDP Lead + Game Engine Jitter`
+> 💡 **Mental Timing Model:**
+> `Game Reading ≈ Stop Time − Trigger Compensation + λ`, where λ is the quantized "seeing" latency (a few tens of ms, render-phase dependent). Practically: every `0.01s` of error ⇐ `10ms` of adjustment in **Stop Time** or **Trigger Compensation**.
 
 ---
 
@@ -270,51 +304,32 @@ zang-takhfif-shekan/
 1. Clone or download this repository:
 
 ```bash
-git clone https://github.com/HyperNima/zang-takhfif-shekan.git
+    git clone https://github.com/HyperNima/zang-takhfif-shekan.git
 ```
+
 2. Open Chrome and navigate to `chrome://extensions`.
-3. Enable **Developer mode** via the toggle switch in the top-right corner.
+3. Enable **Developer mode** via the toggle in the top-right corner.
 4. Click **Load unpacked** and select the `zang-takhfif-shekan` directory.
-5. Launch the game page. The **"⏱ 5-Second Assistant"** panel will overlay on the screen automatically.
+5. Launch the game page. The **"⏱ 5-Second Assistant"** panel overlays on the screen automatically.
 
 ---
 
-## 🎯 Usage & Calibration Protocol
+## 🎯 Usage
 
-> ⚠️ **Golden Rule:** Calibration decisions must be based **exclusively on the timing value displayed by the game UI itself** — ignore panel estimates or perceived timing.
-
-| Game Display | Action Required |
-| :--- | :--- |
-| **`05:00` (Win)** | 🎉 Calibration complete! Claim coupon. |
-| **`05:00` (No Win)** | Target the center of the millisecond window (adjust offset to `5.005`). |
-| **`04:99`** | Increment Stop Time by `+0.01`s. |
-| **`05:01`** | Decrement Stop Time by `-0.01`s. |
-| **Bouncing Values** | Increase precision using 3 decimal places (e.g., `5.005`). |
-
-> 📌 **Pro Tip:** Execution logs automatically calculate and display suggested values for subsequent runs. Copy the suggested value directly into the panel.
-
-### Operational Nuances
-* **Panel vs. Game Display:** When configuring "Stop Registers On = Release", the UI display on the panel naturally reflects `Stop Time − Human Gap`. Always calibrate against the game's timer display.
-* **Clock Synchronization:** Because the game counter begins on button *release*, setting **Start Delay = Human Gap** aligns internal extension scheduling with game state logic.
-* **Persistence:** Avoid refreshing the page between calibration attempts; page reloads reset the game engine's initialization jitter baseline.
-
----
-
-## ⚠️ Field Notes & Edge Cases
-
-* 🛑 **Chrome Debugger Banner:** The native Chrome infobar stating `"Extension started debugging this browser"` is expected behavior. Do not click *Cancel*; it detaches automatically upon completion.
-* 🛑 **DevTools Conflict:** Do not open native Chrome DevTools (`Inspect`) on the active game tab. Chrome allows only one active debugger connection per tab at a time.
-* 🛑 **Viewport Scale:** Ensure browser Zoom is set strictly to `100%`. Avoid manually scrolling during active sequence execution.
-* 🛑 **Extension Conflicts:** Disable existing userscripts or Tampermonkey bots targeting the same hotkeys (`K`) to prevent duplicate execution triggers.
-
+* **Enable the extension before starting the game:** First, press the `T` key while your mouse is over a blank area to activate `CDP`. Ensure the game timer reads 00:00 before moving your mouse over the start button and pressing the `K` key.
+* **Chrome Debug Banner:** The message at the top of the browser stating `"Extension started debugging this browser"` is normal. Do not click Cancel; it will close automatically after the automated operation finishes.
+* **DevTools Conflict:** The DevTools (Inspect) tool must not be open on that same tab; the CDP protocol does not allow two debuggers to connect to a single tab simultaneously.
+* **Display Settings:** Page zoom level must be set to `100%`. Do not scroll during execution. Ensure your keyboard layout is set to English!
+* 🩺 **If it doesn't trigger:** If the log says "Count pattern not detected," it means the game hasn't started or the threshold is incorrect — troubleshoot with 🧪 and adjust the "Δ threshold." Automated execution without clicking has been cancelled.
+  
 ---
 
 ## ⚖️ Limitations & Disclaimer
 
-* **Fair Play:** This tool **does not** grant additional game attempts, bypass server-side validation, or manipulate remote game state. It simply replaces human reaction latency with millisecond-accurate automation.
-* **Engine Jitter:** Due to variable client-side rendering lag and game engine startup jitter, minor re-calibration may be required following page reloads.
-* **Educational Disclaimer:** This project was developed strictly as an educational proof-of-concept exploring browser automation and reverse engineering techniques. Use of automation tools may violate the target platform's Terms of Service. Use responsibly and at your own risk.
+* **Fair Play:** This tool **does not** grant additional attempts, bypass server-side validation, or manipulate remote game state. It replaces human reaction latency with millisecond-accurate automation.
+* **Residual Jitter:** The Burst engine removes the random startup pause, but render-frame quantization (~17ms) and seeing-latency variance remain — readings may occasionally bounce between adjacent values; aim mid-window.
+* **Educational Disclaimer:** This project is a research proof-of-concept in reverse engineering and browser automation, published for learning purposes. Use may violate the target platform's Terms of Service. Use responsibly and at your own risk.
 
 ---
 
-*built with `performance.now()`, one busy-wait loop, and an unreasonable amount of stubbornness.* :))
+*built with `performance.now()`, one busy-wait loop, a 64×14 canvas viewport, and an unreasonable amount of stubbornness.* :))
