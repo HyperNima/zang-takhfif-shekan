@@ -28,9 +28,9 @@
     hotkey: 'KeyK',
     method: 'canvas',            /* canvas | pixel | off */
     thresh: 8,                   /* آستانهٔ Δ فریم‌به‌فریم */
-    syncComp: 20,
-    delayMs: 80, stopSec: 5.00, gapMs: 90,
-    anchor: 'press', leadMs: 0, autoRearm: false,
+    syncComp: 40,
+    delayMs: 80, stopSec: 5.04, gapMs: 50,
+    anchor: 'press', leadMs: 40, autoRearm: false,
     mouseX: null, mouseY: null,
     origX: 0, origY: 0, runX: 0, runY: 0,
     runDelayMs: 80, runStopSec: 5.00, syncRunning: false, testing: false,
