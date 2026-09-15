@@ -78,7 +78,7 @@ Screenshot
 ```
 ### ⚙️ جریان کار
 
-* موس را روی دکمهٔ «شروع زنگ» می‌گذارید و کلید `K` را می‌زنید.
+* موس را روی صفحه ی خالی آورده و با تنظیم زبان انگلیسی کیبرد، کلید `T` کیبرد را میزنید تا `CDP` کروم فعال شود، **مطمئن شوید هر مرتبه که قصد شروع بازی را دارید ثانیه شمار بازی حتما 00:00 را نشان بدهد**، سپس موس را روی دکمهٔ «شروع زنگ» را می‌گذارید و کلید `K` را می‌زنید.
 * `content script` سلامت canvas تایمر را بررسی و مختصات و تنظیمات را به `service worker` می‌فرستد.
 * `worker` دیباگر را متصل کرده، رویداد `press` شروع را همان‌جا و رویداد `release` را پس از «فاصلهٔ انسانی» تزریق می‌کند.
 * هم‌زمان موتور Burst شروع به تماشای bitmap تایمر می‌کند: مقایسهٔ فریم‌به‌فریمِ ناحیهٔ رقم صدم‌ثانیه.
@@ -262,7 +262,7 @@ With clicks solved, a subtler enemy remained: the **random startup pause**. Any 
 
 ### 🔄 Execution Flow
 
-1. **Targeting:** Hover over the "Start" button and press `K`.
+1. **Targeting:** Move the mouse over a blank area of the page, set your keyboard layout to English, and press the `T` key to open Chrome `CDP`. **Make sure that every time you want to start the game, the game timer strictly shows 00:00**. Then, hover the mouse over the 'Start Alarm' button and press the `K` key.
 2. **Handoff:** The content script verifies timer-canvas health, then forwards coordinates and parameters to the background Service Worker.
 3. **Initiation:** The worker attaches the debugger (persistent connection) and dispatches the start `mousePressed` immediately, followed by `mouseReleased` after the configured "Human Gap".
 4. **Surveillance:** The Burst engine watches the timer canvas bitmap: frame-to-frame diffing of the hundredths-digit zone.
