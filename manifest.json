@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "DK Five Second Rush — CDP Clicker",
-  "description": "کلیک کاملاً trusted از سطح CDP برای بازی ۵ ثانیه دیجی‌کالا — کلید K اجرا، T تست، ردیابی اسکرول خودکار",
-  "version": "2.0.0",
+  "name": "Five Second Rush — CDP Clicker (Pixel Sync)",
+  "description": "کلیک trusted از CDP + همگام‌سازی شروع با اولین حرکت پیکسلی تایمر بازی — کلید K اجرا، T تست",
+  "version": "3.0.0",
   "permissions": ["debugger"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
