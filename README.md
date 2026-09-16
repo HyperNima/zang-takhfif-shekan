@@ -36,16 +36,6 @@ Screenshot
 
 جالب‌ترین لحظهٔ کاوش؟ اولش مطمئن بودم دکمه داخل Shadow DOM است و برای نفوذ به `shadowRoot` کد نوشتم. بعد یک dump از DOM گرفتم و دیدم دکمه یک `<button>` سادهٔ React در DOM معمولی است. درِ بسته‌ای که کلیدش جای دیگری بود: **اصالت رویداد**.
 
-### چرا Tampermonkey جواب نداد
-
-مسیر کاملش را رفتم:
-
-1. شبیه‌سازی توالی کامل رویدادها (از `pointerdown` تا `click`) — بازی بی‌اعتنا بود.
-2. جعل `isTrusted` روی خودِ رویداد با `Object.defineProperty` — کار می‌کند، ولی هیچ تضمینی نیست کدام چکِ native پشت صحنه منتظرت باشد.
-3. صدا زدن مستقیم هندلرهای React از `__reactProps$` — هک قشنگی است، ولی حس‌وحال باخت داد.
-
-**نتیجه:** در دنیای userscript هیچ راهی وجود ندارد که رویدادی «واقعاً» از موس یا کیبورد سیستم متولد شود. باید یک لایه بالاتر می‌رفتم.
-
 ### ایدهٔ اول: کلیک از سمتِ خودِ کروم
 
 افزونه با دسترسی `chrome.debugger` به تب وصل می‌شود و از طریق پروتکل CDP دستور `Input.dispatchMouseEvent` می‌فرستد. این رویدادها از **پایپ‌لاین ورودی خودِ کروم** تزریق می‌شوند: هیت‌تست را خود مرورگر انجام می‌دهد، Shadow DOM و iframe را خودش حل می‌کند، و `isTrusted === true` است — واقعاً، نه جعلی. از دید بازی، این همان کلیک دستِ توست.
@@ -86,6 +76,20 @@ Screenshot
 * `تریگر + زمان توقف − جبران − پیش‌ارسال` به worker ارسال و با زمان‌بند میلی‌ثانیه‌ای (setTimeout + busy-wait) کلیک توقف زمان‌بندی می‌شود.
 * دکمهٔ توقف حین اجرا **به‌صورت زنده ردیابی می‌شود** (هر ۲۵۰ms + دو بار دقیقاً قبل از توقف) تا اسکرول خودکار بازی جبران شود — مثل دستی که دکمه را دنبال می‌کند.
 * در لحظهٔ هدف، `press` و `release` توقف تزریق می‌شود و لاگ‌ها زمان‌بندی داخلی را گزارش می‌کنند.
+
+---
+
+### 📴 نکتهٔ بسیار مهم: تمرین آفلاین، بردِ آنلاین
+
+> 💡 **توصیهٔ شدید:** بعد از اینکه صفحهٔ بازی **کاملاً لود شد**، اینترنت خود را قطع کنید و سعی کنید به‌صورت کاملاً آفلاین با کمک افزونه برنده شوید. وقتی با تنظیم دقیق (فاین‌تیون) تأخیرها و زمان‌بندی‌ها در حالت آفلاین برنده شدید، **بلافاصله بعد از برد به اینترنت متصل شوید** تا جایزه برای شما صادر شود. مراحل بعدی بازی را نیز به همین ترتیب انجام دهید: ابتدا بردِ آفلاین، سپس دریافت جایزه با اتصال آنی — تا خطاها و محدودیت ۱۰ تلاش روزانه شما را محدود نکنند.
+
+**چرا این روش کار می‌کند؟**
+
+* **شمارش تلاش‌ها سمت سرور است:** در حالت آفلاین، باخت‌ها و خطاها به سرور ارسال نمی‌شوند؛ یعنی محدودیت ۱۰ تلاش روزانه عملاً غیرفعال می‌شود.
+* **کالیبراسیون بدون هزینه:** می‌توانید بدون ترس از هدر رفتن شانس‌ها، تنظیمات (زمان توقف، جبران تریگر و...) را به دفعات و با خیال راحت تغییر دهید.
+* **ثبت جایزه با اتصال آنی:** به محض دیدن صفحهٔ برد، آنلاین شوید تا نتیجهٔ موفقیت‌آمیز برای حساب شما همگام‌سازی (Sync) و جایزه دریافت شود.
+  
+---
 
 ### ✨ امکانات
 
@@ -156,7 +160,7 @@ Screenshot
 
 ### ⚖️ محدودیت‌ها و سلب مسئولیت
 
-* این افزونه تعداد شانس‌های روزانه را افزایش نداده و منطق سمت سرور را تغییر نمی‌دهد؛ بلکه تنها پنجرهٔ زمانی ۱۰ میلی‌ثانیه‌ای را از خطای انسانی خارج کرده و به دقت اتوماسیون می‌سپارد.
+* **بازی آفلاین:** بخش «📴» روش دور زدن محدودیت ۱۰ تلاش روزانه را توضیح می‌دهد — بارزترین تضاد با قوانین مسابقه؛ با مسئولیت شخصی همراه است.
 * موتور Burst مکث تصادفی شروع را حذف می‌کند، اما **کوانتیزاسیون فریم رندر** (~۱۷ms) و نوسان تأخیر دیدن باقی می‌ماند؛ به همین دلیل عدد بازی ممکن است گاهی بین دو مقدار مجاور بپرد — راه‌حل، هدف‌گیری وسط پنجره است.
 * **Disclaimer:** این پروژه صرفاً یک نمونهٔ پژوهشی در زمینهٔ مهندسی معکوس و اتوماسیون مرورگر (Browser Automation) بوده و جهت اهداف آموزشی منتشر شده است. مسئولیت رعایت قوانین پلتفرم هدف بر عهدهٔ استفاده‌کننده است.
 
@@ -186,16 +190,6 @@ Sounds easy? Your winning window is roughly **10 milliseconds**, whereas average
 * **Server-Side Validation:** Attempt limits (10/day) are enforced server-side, making naive brute-force loops completely ineffective.
 
 > 💡 **Key Insight:** Initial inspection hinted that the button resided deep within a Shadow DOM tree. DOM dumps revealed a standard React `<button>` in the light DOM. The actual protection layer wasn't encapsulation — it was **Event Authenticity**.
-
----
-
-## 🛑 Why Userscripts (Tampermonkey) Failed
-
-1. **Full Synthetic Event Dispatching:** Sequence chains (`pointerdown` → `mousedown` → `mouseup` → `click`) were ignored by internal React handlers.
-2. **Property Spoofing:** Redefining `isTrusted` via `Object.defineProperty` bypasses superficial checks, but fails against browser-native validation deeper in the pipeline.
-3. **React Fiber Hooking:** Calling internal handlers directly via `__reactProps$` worked, but bypassed the native interaction lifecycle entirely.
-
-**Conclusion:** Userscripts operating strictly within the DOM cannot generate genuine hardware-level events. The game required moving one abstraction layer up: **The Browser Debugging Protocol.**
 
 ---
 
@@ -250,6 +244,18 @@ With clicks solved, a subtler enemy remained: the **random startup pause**. Any 
 6. **Precision Scheduling:** `trigger + stop time − compensation − CDP lead` is sent to the worker, which arms the stop click with a millisecond scheduler (`setTimeout` + busy-wait).
 7. **Dynamic Tracking:** The stop button is tracked live (every 250ms plus twice right before the stop) to compensate the game's auto-scroll.
 8. **Stop & Telemetry:** At the target millisecond, the stop press/release is injected; logs report internal timing for your next calibration.
+
+---
+
+### 📴 Critical Tip: Practice Offline, Cash In Online
+
+> 💡 **Strong Recommendation:** Once the game page has **fully loaded**, disconnect from the internet and try to win with the extension while completely offline. When you finally win offline (after fine-tuning your delays and timings), **reconnect immediately after the win** so the prize is generated for your account. Handle the subsequent game stages the same way: win offline first, then go online instantly to claim the reward — this prevents errors and the 10-attempts-per-day limit from restricting you.
+
+**Why this works:**
+
+* **Attempts are counted server-side:** While offline, your losses and errors never reach the server — the 10/day limit is effectively disabled.
+* **Free calibration:** Tune settings (Stop Time, Trigger Compensation, etc.) as many times as you like without burning a single attempt.
+* **Prize on reconnect:** The moment the win screen appears, go online and the successful result syncs to your account.
 
 ---
 
@@ -326,7 +332,7 @@ With clicks solved, a subtler enemy remained: the **random startup pause**. Any 
 
 ## ⚖️ Limitations & Disclaimer
 
-* **Fair Play:** This tool **does not** grant additional attempts, bypass server-side validation, or manipulate remote game state. It replaces human reaction latency with millisecond-accurate automation.
+* **Offline Play:** the 📴 section describes bypassing the daily attempt limit via offline play — the clearest conflict with the promotion's rules; proceed at your own responsibility.
 * **Residual Jitter:** The Burst engine removes the random startup pause, but render-frame quantization (~17ms) and seeing-latency variance remain — readings may occasionally bounce between adjacent values; aim mid-window.
 * **Educational Disclaimer:** This project is a research proof-of-concept in reverse engineering and browser automation, published for learning purposes. Use may violate the target platform's Terms of Service. Use responsibly and at your own risk.
 
