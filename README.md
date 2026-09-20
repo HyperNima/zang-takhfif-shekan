@@ -3,6 +3,11 @@
 > **فا:** یک افزونهٔ کروم که برای شکست دادن بازی «زنگ تخفیف» دیجی‌کالا، کلیک‌هایش را از خودِ کروم قرض می‌گیرد و شروعِ شمارش را با تماشای پیکسل‌های تایمر تشخیص می‌دهد.
 > **EN:** A Chrome extension that borrows its clicks from Chrome itself — and knows when the countdown *truly* starts by watching the timer's own pixels.
 
+<div align="center">
+  <img width="509" height="360" alt="Zang_Takhfif_Shekan" src="https://github.com/user-attachments/assets/1e66ced6-e36e-491c-9d69-aa2a2061b04b" />
+</div>
+
+
 🇮🇷 [فارسی](#-فارسی) | 🇬🇧 [English](#-english)
 
 📌 **نسخهٔ فعلی: `3.2.1`** — موتور Burst + پنل جمع‌وجور
